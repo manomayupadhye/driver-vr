@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Winter Morning Highway – VR</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#dcd5c6;font-family:system-ui,sans-serif;color:#1d2330}
+canvas{display:block}
+#start{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(220,213,198,.85);cursor:pointer;text-align:center}
+#start h1{margin:0;font-size:34px;font-weight:600}#start p{margin:0;max-width:460px;line-height:1.4}
+.panel{position:fixed;z-index:10;background:rgba(255,255,255,.75);padding:8px 14px;border-radius:10px;font-size:13px;line-height:1.5;pointer-events:none}
+#gstat{left:14px;top:56px;font-size:14px}
+#cross{position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000;z-index:9;pointer-events:none;display:none}
+#legend{left:14px;bottom:14px}#hud{left:50%;top:14px;transform:translateX(-50%);font-size:16px}
+#snd{position:fixed;left:14px;top:14px;z-index:10;padding:8px 14px;border:0;border-radius:10px;background:#1d2330;color:#fff;font-size:13px;cursor:pointer}
+/* ENTER VR: strong colour + headset icon, z-index above the start overlay */
+#vr{position:fixed;z-index:10000}
+#vr button,#vr a{position:fixed!important;right:18px!important;top:18px!important;left:auto!important;bottom:auto!important;width:auto!important;
+ padding:15px 24px 15px 62px!important;border:0!important;border-radius:14px!important;background:#ff2d78!important;color:#fff!important;
+ font:700 17px system-ui!important;opacity:1!important;box-shadow:0 6px 20px rgba(255,45,120,.5)!important;cursor:pointer;text-decoration:none}
+#vr button::before{content:"";position:absolute;left:18px;top:50%;width:32px;height:20px;transform:translateY(-50%);
+ background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 18'><path d='M3 1h22a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-6l-3-4h-4l-3 4H3a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3z' fill='white'/><circle cx='8' cy='9' r='3' fill='%23ff2d78'/><circle cx='20' cy='9' r='3' fill='%23ff2d78'/></svg>") center/contain no-repeat}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head><body>
+<div id="start"><h1>Winter morning on the highway</h1>
+<p>You start in the driver's seat of a compact SUV, parked on the shoulder. Click anywhere to begin (this also starts the music).</p></div>
+<div id="gstat" class="panel"></div><div id="cross"></div><div id="vr"></div><button id="snd">Sound: off (M)</button><div id="hud" class="panel">0 km/h</div>
+<div id="legend" class="panel"><b>Controls</b><br>W/S or ↑/↓ drive/walk · A/D or ←/→ steer/strafe · Shift faster<br>
+Mouse look (click to lock, or drag) · Scroll zoom · Space handbrake<br>1 driver · 2 front passenger · 3 rear left · 4 rear middle · 5 rear right (teleport)<br>Arrow keys drive from seat 1 (first press <b>D</b> on the console) · E get in/out · F first/third person<br>Limit 100 km/h: speed cameras flash + call the police, police chase you above it, traffic stops at red lights<br>Click dash controls with the crosshair (right-click / Shift = down · wheel over a knob adjusts) · M sound · G hold the dash model<br>
+VR: left stick move/drive · right stick 30° turn · A/X sound · B/Y get in/out · stick-click next seat · point + trigger presses a control (grip = down) · trigger grabs dash model</div>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+const MU = THREE.MathUtils, $ = id => document.getElementById(id);
+
+/* ---------- 1. RENDERER, CAMERA RIG, FOG ---------- */
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95; // filmic look
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;       // soft shadows
+renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');              // headset supplies head height
+document.body.appendChild(renderer.domElement);
+const dom = renderer.domElement, HAZE = 0xdcd5c6;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(HAZE);
+scene.fog = new THREE.Fog(HAZE, 40, 420);                       // horizon fades into winter haze
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.05, 2000);
+const rig = new THREE.Group(); rig.add(camera); scene.add(rig);  // RIG: we move/rotate this, never the camera
+
+/* ---------- 2. SMALL BUILDING HELPERS ---------- */
+const M = (c,r=.8,m=0) => new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:m});
+const basic = c => new THREE.MeshBasicMaterial({color:c});
+const B = (p,w,h,d,mat,x,y,z) => { const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); o.position.set(x,y,z); p.add(o); return o; };
+const C = (p,r,h,mat,x,y,z,rx=0) => { const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,20),mat); o.position.set(x,y,z); o.rotation.x=rx; p.add(o); return o; };
+
+/* ---------- 3. SKY, SUN, LIGHT, CHEAP BACKGROUND ---------- */
+const far = new THREE.Group(); scene.add(far);   // follows the player: sky, ground, hills, clouds (no collision)
+{ const sg=new THREE.SphereGeometry(1000,24,12), pa=sg.attributes.position, col=[], top=new THREE.Color(0x8fb0cc), hor=new THREE.Color(HAZE), t=new THREE.Color();
+  for(let i=0;i<pa.count;i++){ t.lerpColors(hor,top,MU.clamp(pa.getY(i)/600,0,1)); col.push(t.r,t.g,t.b); }  // gradient painted per vertex
+  sg.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  far.add(new THREE.Mesh(sg,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false}))); }
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000,3000).rotateX(-Math.PI/2), M(0xaaa97c,1));
+ground.position.y=-.01; ground.receiveShadow=true; far.add(ground);
+const hillMat = new THREE.MeshBasicMaterial({color:0xb9bfc2,fog:false});            // faint hazy silhouettes
+for(let i=0;i<16;i++){ const a=i/16*Math.PI*2, h=MU.randFloat(50,110), m=new THREE.Mesh(new THREE.ConeGeometry(1,1,5),hillMat);
+  m.scale.set(MU.randFloat(110,170),h,MU.randFloat(110,170)); m.position.set(Math.cos(a)*680,h/2-2,Math.sin(a)*680); far.add(m); }
+const sunDir = new THREE.Vector3(-.5,.42,-.75).normalize();                          // low winter-morning sun
+const disc = new THREE.Mesh(new THREE.SphereGeometry(24,16,8),new THREE.MeshBasicMaterial({color:0xfff4d8,fog:false}));
+disc.position.copy(sunDir).multiplyScalar(900); far.add(disc);
+const clouds = new THREE.Group(); far.add(clouds);                                   // a few thin clouds
+const cloudMat = new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.8,fog:false});
+for(let i=0;i<5;i++){ const g=new THREE.Group(); for(let j=0;j<3;j++){ const s=new THREE.Mesh(new THREE.SphereGeometry(1,10,6),cloudMat);
+  s.scale.set(MU.randFloat(40,70),9,MU.randFloat(18,30)); s.position.set(j*35,MU.randFloat(-2,2),MU.randFloat(-8,8)); g.add(s); }
+  const a=MU.randFloat(0,6.28); g.position.set(Math.cos(a)*450,MU.randFloat(160,240),Math.sin(a)*450); g.rotation.y=-a; clouds.add(g); }
+scene.add(new THREE.HemisphereLight(0xcfdcec,0xb7a98a,1.1));                          // sky/ground fill light
+const sun = new THREE.DirectionalLight(0xfff0d6,2.2); sun.castShadow=true;           // the one shadow caster
+sun.shadow.mapSize.set(1024,1024); Object.assign(sun.shadow.camera,{left:-30,right:30,top:30,bottom:-30,near:1,far:200});
+sun.shadow.bias=-.0005; sun.shadow.normalBias=.04; scene.add(sun,sun.target);
+
+/* ---------- 4. ROAD (8 lanes, India = drive on the LEFT) ---------- */
+// `world` holds road + trees. We snap it to multiples of 60 m under the player, so the road feels endless
+// while only ~1 km of geometry exists. 60 is divisible by the tree/dash spacing so the pattern never "jumps".
+const world = new THREE.Group(); scene.add(world);
+const SNAP=60, LANE=[3.25,6.75,10.25,13.75];                     // |x| of the 4 lane centres each side
+const asphalt = B(world,36,.1,960,M(0x44464a,.95),0,0,0); asphalt.receiveShadow=true;
+const median = B(world,3,.14,960,M(0x98a070,1),0,.07,0); median.receiveShadow=true;      // low planted strip with a 9 cm kerb: drivable, just rough (no invisible wall any more)
+for(const s of [-1,1]){ B(world,2.5,.12,960,M(0x5a5a57,1),s*16.75,0,0).receiveShadow=true;
+  B(world,.15,.02,960,basic(0xf2f2f2),s*15.5,.06,0); }
+const dashes = new THREE.InstancedMesh(new THREE.BoxGeometry(.14,.02,3),basic(0xf2f2f2),576), dm = new THREE.Object3D(); let di=0;
+for(const s of [-1,1]) for(const k of [1,2,3]) for(let z=-475;z<480;z+=10){ dm.position.set(s*(1.5+3.5*k),.06,z); dm.updateMatrix(); dashes.setMatrixAt(di++,dm.matrix); }
+world.add(dashes);
+
+/* ---------- 5. TREE FACTORY ---------- */
+// FACTORY PATTERN: one function that builds one tree. Geometry/materials are created ONCE and shared,
+// so placing 100 trees costs almost no extra memory. Call it in a loop with different x, z, scale, rotation.
+const TRUNK=new THREE.CylinderGeometry(.18,.28,3,6), CROWN=new THREE.IcosahedronGeometry(2.2,1);
+const BARK=M(0x6b5a48,1), LEAF=[M(0x6f9a52,1),M(0x58844a,1)];
+const trees=[];                                                    // collision footprints (circles) for trees
+function makeTree(x,z,s=1,rot=0,solid=true){
+  const g=new THREE.Group(); g.add(new THREE.Mesh(TRUNK,BARK).translateY(1.5));
+  const c=new THREE.Mesh(CROWN,LEAF[Math.abs(Math.round(x*7+z))%2]); c.position.y=4.3; c.scale.y=.85; c.castShadow=true; g.add(c);
+  g.position.set(x,0,z); g.scale.setScalar(s); g.rotation.y=rot; world.add(g);
+  if(solid) trees.push({x,z,r:.45*s});                             // trunk footprint, local to `world`
+  return g; }
+for(let z=-480;z<=480;z+=20) for(const s of [-1,1]) makeTree(s*(23+Math.random()*4),z+Math.random()*4,MU.randFloat(.9,1.4),Math.random()*6);
+for(let z=-480;z<=480;z+=20){ makeTree(0,z,.35,0,false); trees.push({x:0,z,r:.5}); }   // median shrubs are real, solid objects: hit one and you feel it
+
+/* ---------- 6. CABIN FACTORY: Kia Seltos 2026 (right-hand drive, modelled on your reference photo) ---------- */
+// PERFORMANCE TRICK: instead of ~200 separate meshes, a "builder" collects every box/cylinder, bakes its position
+// into the geometry, and MERGES all pieces that share a material into ONE mesh. The whole cabin = ~15 draw calls.
+// Car-local axes: +x = right, +y = up, -z = forward. Driver sits at x=+0.37 (right-hand drive).
+function builder(g){
+  const bk=new Map(), q=new THREE.Quaternion(), e=new THREE.Euler(), v=new THREE.Vector3(), one=new THREE.Vector3(1,1,1), m4=new THREE.Matrix4();
+  const geo=(gm,mat,x,y,z,rx=0,ry=0,rz=0)=>{ gm.applyMatrix4(m4.compose(v.set(x,y,z),q.setFromEuler(e.set(rx,ry,rz)),one)); if(!bk.has(mat)) bk.set(mat,[]); bk.get(mat).push(gm); };
+  return { geo,
+    box:(mat,w,h,d,x,y,z,rx,ry,rz)=>geo(new THREE.BoxGeometry(w,h,d),mat,x,y,z,rx,ry,rz),       // box(material,w,h,d, x,y,z, rotX,rotY,rotZ)
+    cyl:(mat,r,h,x,y,z,rx,ry,rz)=>geo(new THREE.CylinderGeometry(r,r,h,16),mat,x,y,z,rx,ry,rz),
+    done(){ for(const [mat,list] of bk){                                // merge needs ALL pieces indexed or ALL non-indexed (rounded boxes are non-indexed)
+      const mixed=list.some(x=>x.index)&&list.some(x=>!x.index);
+      g.add(new THREE.Mesh(mergeGeometries(mixed?list.map(x=>x.index?x.toNonIndexed():x):list),mat)); } } }; }
+function makeCockpit(full=true,live=true){                          // full=false: front half only; live=false: static look-alike (inspection model)
+  const g=new THREE.Group(), K=builder(g);
+  const dash=M(0x1d1e21,.8), dash2=M(0x111214,.85), trim=M(0x2b2c30,.75), blk=M(0x050607,.25,.3), chrome=M(0xc2c5c9,.25,.9),
+    fab=M(0x4b4b50,.95), fabL=M(0x66666c,.95), head=M(0x3b3b3f,.95), carpet=M(0x18181a,1), mir=M(0x8fa0b0,.05,1),
+    glow=basic(0x4fb8ff), red=basic(0xff2a1a), lamp=basic(0xfff4d0), scr=basic(0x0b1722), lcd=basic(0x9fe0ff), dial=basic(0x9fd4ff),
+    glass=new THREE.MeshStandardMaterial({color:0x1b2733,roughness:.1,transparent:true,opacity:.35});
+  K.box(carpet,1.7,.04,2.6,0,.47,.5);                                // floor
+  // --- dashboard: soft-touch charcoal slab over a darker lower fascia ---
+  K.box(dash,1.76,.14,.55,0,.9,-.68); K.box(dash2,1.7,.38,.32,0,.64,-.6);
+  K.box(trim,.62,.22,.03,-.5,.76,-.43);                             // passenger-side textured strip
+  K.box(trim,.7,.26,.02,-.45,.58,-.435); K.box(chrome,.12,.012,.015,-.45,.68,-.42);   // glove box + handle
+  K.box(trim,.4,.2,.03,.4,.55,-.43); K.box(dash2,.16,.14,.2,.37,.78,-.26);            // driver knee panel, steering column shroud
+  // --- AC vents: two long slim horizontal vents + square corner vents (chrome frame, black slats) ---
+  K.box(chrome,.64,.04,.02,-.48,.86,-.4); K.box(blk,.6,.022,.022,-.48,.86,-.4);
+  K.box(chrome,.52,.04,.02,.14,.86,-.4);  K.box(blk,.48,.022,.022,.14,.86,-.4);
+  for(const s of [-1,1]){ K.box(chrome,.13,.075,.03,s*.78,.87,-.4); K.box(blk,.1,.05,.032,s*.78,.87,-.4); for(let i=-1;i<=1;i++) K.box(chrome,.09,.004,.034,s*.78,.87+i*.014,-.4); }
+  K.box(glow,.7,.01,.012,-.5,.73,-.395); K.box(glow,.35,.01,.012,.45,.73,-.395);       // blue ambient light strips
+  // --- climate panel under the screen: button row (centre = red HAZARD), two rotary knobs, temp display ---
+  K.box(blk,.5,.2,.03,0,.73,-.425);
+  if(!live){                                                         // (live cabins get real, clickable versions from buildDashUI)
+    for(let i=0;i<7;i++) i===3 ? K.box(red,.04,.03,.012,0,.785,-.405) : K.box(chrome,.04,.022,.012,-.18+i*.06,.785,-.405);
+    for(const x of [-.15,.15]){ K.cyl(chrome,.03,.03,x,.7,-.405,Math.PI/2); K.cyl(blk,.022,.032,x,.7,-.405,Math.PI/2); }
+    K.box(lcd,.12,.03,.008,0,.7,-.408); for(let i=0;i<5;i++) K.box(chrome,.04,.02,.012,-.12+i*.06,.65,-.405); }
+  // --- panoramic curved display: 12.3" infotainment + 12.3" cluster under one glass strip ---
+  K.box(blk,.7,.17,.06,.12,1.04,-.53);
+  K.box(scr,.4,.125,.008,-.03,1.04,-.478,0,.1);                     // infotainment (angled toward the driver)
+  if(!live) [basic(0xd9a21b),basic(0x2f6fbf),basic(0x2aa6a0),basic(0xe07b2a)].forEach((m,i)=>{ const dx=-.15+i*.1;     // 4 widget tiles
+    K.box(m,.085,.075,.004,-.03+dx*Math.cos(.1),1.045,-.475-dx*Math.sin(.1),0,.1); });
+  K.box(scr,.26,.125,.008,.34,1.04,-.496);                          // digital cluster
+  if(!live){ for(const x of [.285,.395]) K.geo(new THREE.TorusGeometry(.04,.004,8,28),dial,x,1.04,-.49);
+    K.box(glow,.03,.05,.004,.34,1.04,-.491); K.box(lcd,.03,.012,.004,.395,1.04,-.491); }
+  // --- pedals (brake, accelerator, dead pedal) ---
+  K.box(chrome,.09,.012,.15,.31,.52,-.36,.6); K.box(chrome,.07,.012,.14,.46,.52,-.36,.6); K.box(chrome,.16,.012,.16,.13,.5,-.3,.5);
+  // --- centre console: gear lever with chrome ring, button rows, cup holders, grey armrest, rear vents ---
+  K.box(dash2,.34,.2,1.0,0,.545,.15); K.box(blk,.3,.01,.34,0,.645,-.13);
+  K.cyl(chrome,.05,.012,0,.655,-.1);
+  if(!live){ K.cyl(blk,.012,.1,0,.7,-.1); K.cyl(blk,.027,.05,0,.75,-.1); for(let i=0;i<4;i++) K.box(chrome,.03,.008,.03,-.1+i*.067,.65,-.25); }
+  for(const x of [-.07,.07]) K.cyl(blk,.04,.012,x,.648,.1); K.box(fab,.3,.1,.34,0,.69,.5); K.box(fabL,.26,.012,.3,0,.745,.5);
+  K.box(blk,.16,.04,.02,0,.55,.66);
+  // --- seat factory: one function, called 5 times ---
+  const seat=(x,z,y)=>{ K.box(fab,.5,.12,.56,x,y,z); K.box(fabL,.3,.01,.5,x,y+.066,z);
+    K.box(fab,.5,.62,.14,x,y+.4,z+.31,.12); K.box(fabL,.3,.5,.01,x,y+.4,z+.237,.12);
+    for(const s of [-1,1]) K.box(fab,.07,.5,.16,x+s*.215,y+.38,z+.28,.12);
+    K.box(fab,.26,.2,.1,x,y+.82,z+.36,.12); for(const s of [-1,1]) K.box(blk,.02,.1,.02,x+s*.07,y+.7,z+.34,.12); };
+  seat(-.37,.35,.52); seat(.37,.35,.52);                            // front: passenger (-x), driver (+x)
+  if(full) for(const x of [-.46,0,.46]) seat(x,1.3,.55);            // rear: left, middle, right
+  // --- TRIM GROUP: pillars, door cards, mirrors, roof, sunroof. These sit exactly where the exterior panels are, so they are
+  //     hidden whenever the outside shell is visible (otherwise they poke through the paint = the clipping bug) ---
+  const tg=new THREE.Group(), K2=builder(tg); g.add(tg);
+  for(const s of [-1,1]){ K2.box(trim,.08,.8,.1,s*.87,1.265,-.7,.67);
+    K2.box(trim,.07,.45,1.15,s*.9,.62,.08); K2.box(dash2,.08,.1,1.15,s*.9,.92,.08); K2.box(fab,.03,.14,.9,s*.855,.7,.12);
+    K2.box(chrome,.025,.03,.2,s*.85,.88,.2); K2.box(glow,.012,.01,.9,s*.862,.78,.1);
+    K2.box(blk,.1,.15,.2,s*1.0,1.02,-.55); K2.box(mir,.005,.12,.17,s*.948,1.02,-.55); }
+  K2.box(blk,.03,.06,.15,.85,.82,.35);                               // driver window switches
+  if(full){
+    for(const s of [-1,1]){ K2.box(trim,.07,.9,.1,s*.9,1.1,.62);     // B-pillars
+      K2.box(trim,.07,.42,1.0,s*.9,.62,1.2); K2.box(dash2,.08,.1,1.0,s*.9,.9,1.2); K2.box(fab,.03,.14,.8,s*.855,.7,1.2);
+      K2.box(chrome,.025,.03,.18,s*.85,.86,1.15); K2.box(glow,.012,.01,.8,s*.862,.78,1.2);
+      K2.box(trim,.025,.025,.16,s*.8,1.55,.2); K2.box(trim,.025,.025,.16,s*.8,1.55,1.45);          // grab handles
+      K2.box(head,.22,.04,1.0,s*.69,1.6,.5); K2.box(head,.32,.02,.2,s*.4,1.575,-.43); }            // roof side strips, sun visors
+    K2.box(head,1.6,.04,.35,0,1.6,-.45); K2.box(head,1.6,.04,.5,0,1.6,1.55);                        // roof front/rear
+    K2.box(glass,1.16,.012,1.55,0,1.605,.5125); K2.box(blk,1.2,.04,.03,0,1.6,-.27); K2.box(blk,1.2,.04,.03,0,1.6,1.3);  // PANORAMIC SUNROOF
+    K2.box(trim,.3,.045,.15,0,1.575,-.5); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.5); K2.box(blk,.025,.006,.02,s*.05,1.552,-.46); }
+    K2.cyl(red,.013,.008,0,1.552,-.46); K2.box(blk,.13,.05,.07,0,1.52,-.57);                        // overhead console: SOS button, map lights, camera
+    K2.box(blk,.02,.12,.02,0,1.49,-.6); K2.box(blk,.27,.075,.03,0,1.4,-.6); K2.box(mir,.25,.06,.005,0,1.4,-.583);  // rear-view mirror
+  }
+  K2.done();
+  K.done();
+  // --- steering wheel: its own group so it can turn as you steer ---
+  const tilt=new THREE.Group(); tilt.position.set(.37,.92,-.1); tilt.rotation.x=-.5; g.add(tilt);
+  const wheel=new THREE.Group(); tilt.add(wheel); const KW=builder(wheel);
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.185,.02,12,40),M(0x0c0d0f,.5)));
+  KW.box(blk,.1,.075,.04,0,0,.005); KW.box(chrome,.055,.012,.006,0,0,.027);                     // hub + emblem
+  for(const s of [-1,1]){ KW.box(chrome,.15,.045,.018,s*.105,-.015,0); KW.box(blk,.055,.032,.006,s*.11,-.01,.012); }  // spokes + button pads
+  KW.box(chrome,.035,.1,.018,0,-.1,0); KW.done();
+  if(live) buildDashUI(g);                                          // interactive screens, needle, buttons, knobs
+  return {g,wheel,trim:tg}; }
+
+const VMAX=185/3.6;                                                  // top speed: 185 km/h in m/s
+const GAME={fines:0,chase:false,cd:0,sig:'G',flash:0,pz:0,limit:100};   // limit in km/h. chase = any police car pursuing; cd = distance to nearest; pz = previous z (to detect line crossings)
+/* ---------- 6b. LIVE DASHBOARD: state, screen drawing, interactive controls ---------- */
+// IDEA: the dashboard's state lives in two plain objects (DS = what is switched on, UI = the 3D objects). Screens are small
+// <canvas> pictures painted by code at runtime (no image files) and re-painted ONLY when something changes. Every clickable
+// thing is registered in UI.hot with an "act" (name, who may use it, what it does); mouse and VR rays both use the same list.
+const DS={gear:'P',hazard:false,blink:false,page:'home',cl:{tD:22,tP:22,fan:3,hD:0,hP:0,vD:0,vP:0}};   // tD/tP = temps, hD/vD = seat heat/vent levels
+const UI={hot:[],regions:[],leds:{},gb:{},needleA:MU.degToRad(135),hover:null,tipTxt:null,cT:0,mT:0,lastK:-1};
+const SW=640, SH=200, GEARS=['P','R','N','D'];
+function canv(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return {c,x:c.getContext('2d'),t}; }
+function rr(x,X,Y,W,H,R,fill,stroke){ x.beginPath(); x.moveTo(X+R,Y); x.arcTo(X+W,Y,X+W,Y+H,R); x.arcTo(X+W,Y+H,X,Y+H,R); x.arcTo(X,Y+H,X,Y,R); x.arcTo(X,Y,X+W,Y,R); x.closePath();
+  if(fill){ x.fillStyle=fill; x.fill(); } if(stroke){ x.strokeStyle=stroke; x.lineWidth=2; x.stroke(); } }
+function tx(x,s,X,Y,size,col='#fff',al='center'){ x.font='bold '+size+'px system-ui,sans-serif'; x.fillStyle=col; x.textAlign=al; x.textBaseline='middle'; x.fillText(s,X,Y); }
+const addR=(X,Y,W,H,fn)=>UI.regions.push({x:X,y:Y,w:W,h:H,fn});                 // a touch-zone on the screen
+function sbtn(x,X,Y,W,H,label,fn,col='#24384d',size=24){ rr(x,X,Y,W,H,10,col); tx(x,label,X+W/2,Y+H/2,size); addR(X,Y,W,H,fn); }
+const bars=(x,X,Y,n,col)=>{ for(let i=0;i<3;i++) rr(x,X+i*26,Y,22,8,3,i<n?col:'#2b3b4c'); };
+
+// --- actions (shared by the touchscreen AND the physical knobs/buttons: "same functions") ---
+function setPage(p){ DS.page=p; drawScreen(); }
+function adjT(k,d){ DS.cl['t'+k]=MU.clamp(DS.cl['t'+k]+d,16,30); uiSync(); }
+function adjF(d){ DS.cl.fan=MU.clamp(DS.cl.fan+d,0,7); uiSync(); }
+function adjS(kind,k,d){ const key=kind+k; DS.cl[key]=(DS.cl[key]+d+4)%4; uiSync(); }                 // 0 off,1,2,3 (wraps)
+function setGear(g){ if(seat!==0) return msg('Gear selector: driver seat only');
+  if(g===DS.gear) return; if(g!=='N'&&Math.abs(P.speed)>2) return msg('Stop the car before selecting '+g);
+  DS.gear=g; syncGear(); msg('Gear: '+g); }
+function toggleHazard(){ DS.hazard=!DS.hazard; DS.blink=DS.hazard; applyLamps(); drawCluster(); drawScreen(); }
+function applyLamps(){ const L=car.userData.lamps, on=DS.hazard&&DS.blink;                              // tail lights + indicators blink together
+  L.tail.color.setHex(on?0xff2626:0x6a1010); L.amber.color.setHex(on?0xffa200:0x5a3a00);
+  if(UI.hazMat) UI.hazMat.color.setHex(DS.hazard?(DS.blink?0xff3b2a:0x802018):0xb02010); }
+function syncGear(){ if(!UI.lever) return; GEARS.forEach(G=>UI.gb[G].color.setHex(G===DS.gear?0x2f6fbf:0x1c1d20)); drawCluster(); drawScreen(); }
+function uiSync(){ drawScreen(); drawLcd(); const c=DS.cl, K=UI.kn; if(!K) return;
+  K.P.rotation.z=-MU.degToRad(-135+270*(c.tP-16)/14); K.D.rotation.z=-MU.degToRad(-135+270*(c.tD-16)/14); K.F.rotation.z=-MU.degToRad(-135+270*c.fan/7);
+  const heat=[0x2a2a2a,0x8a3a00,0xd85a00,0xff7a1a], vent=[0x2a2a2a,0x1a4a7a,0x2a82d0,0x4fb8ff];
+  for(const k of ['hP','hD']) UI.leds[k].color.setHex(heat[c[k]]); for(const k of ['vP','vD']) UI.leds[k].color.setHex(vent[c[k]]); }
+function setTip(t){ if(t===UI.tipTxt||!UI.tip) return; UI.tipTxt=t; UI.tipMesh.visible=!!t; if(!t) return;
+  const x=UI.tip.x; x.clearRect(0,0,512,48); rr(x,2,2,508,44,12,'rgba(8,16,26,.92)','#4fb8ff'); tx(x,t,256,25,20); UI.tip.t.needsUpdate=true; }
+
+// --- painting ---
+function drawLcd(){ const l=UI.lcd; if(!l) return; const x=l.x, c=DS.cl; x.fillStyle='#06121c'; x.fillRect(0,0,192,48);
+  tx(x,'P '+c.tP+'°',34,24,19,'#9fe0ff'); tx(x,'FAN '+c.fan,96,24,17,'#9fe0ff'); tx(x,'D '+c.tD+'°',158,24,19,'#9fe0ff'); l.t.needsUpdate=true; }
+function drawCluster(){ const c=UI.cluster; if(!c) return; const x=c.x; x.fillStyle='#050b12'; x.fillRect(0,0,256,160);
+  const cx=70, cy=80, r=58; x.strokeStyle='#2b3f55'; x.lineWidth=4; x.beginPath(); x.arc(cx,cy,r,0,7); x.stroke();
+  for(let v=0;v<=220;v+=10){ const a=MU.degToRad(135-270*v/220), sn=Math.sin(a), co=Math.cos(a), major=v%20===0;   // dial ticks: 0..180 km/h, sweep 270°
+    x.strokeStyle=v>180?'#ff5a4a':'#cfe6ff'; x.lineWidth=major?2:1; x.beginPath(); x.moveTo(cx-sn*(r-4),cy-co*(r-4)); x.lineTo(cx-sn*(r-(major?13:8)),cy-co*(r-(major?13:8))); x.stroke();
+    if(v%40===0) tx(x,String(v),cx-sn*(r-25),cy-co*(r-25),11,'#cfe6ff'); }
+  tx(x,'km/h',cx,cy+28,10,'#7f9bb5');
+  tx(x,String(Math.round(Math.abs(P.speed)*3.6)),200,88,44,'#fff'); tx(x,'km/h',200,116,12,'#7f9bb5');
+  GEARS.forEach((G,i)=>tx(x,G,152+i*26,28,G===DS.gear?24:16,G===DS.gear?'#4fb8ff':'#4a5b6c'));
+  if(DS.hazard&&DS.blink){ x.fillStyle='#35e06a'; for(const s of [-1,1]){ x.beginPath(); x.moveTo(200+s*40,10); x.lineTo(200+s*58,18); x.lineTo(200+s*40,26); x.fill(); } }   // indicator arrows
+  tx(x,'LIM '+GAME.limit,152,146,13,'#9fb4c8','left'); tx(x,GAME.chase?'POLICE!':DS.hazard?'HAZARD':'READY',236,146,13,GAME.chase?(Math.floor(performance.now()/300)%2?'#ff3b3b':'#3b8bff'):DS.hazard?'#ff4a3a':'#35e06a','right'); c.t.needsUpdate=true; }
+function drawMap(x,X0,Y0,W,H){                                     // low-res "Google-style" map, north up, centred on the car
+  x.save(); x.beginPath(); x.rect(X0,Y0,W,H); x.clip(); x.fillStyle='#e9e5d9'; x.fillRect(X0,Y0,W,H);
+  const sc=2.2, cx=X0+W/2, cy=Y0+H*.62, mx=wx=>cx+(wx-P.x)*sc, my=wz=>cy+(wz-P.z)*sc;
+  for(const side of [-1,1]) for(let k=Math.floor((P.z-90)/120)-1;k<=Math.floor((P.z+90)/120)+1;k++){   // city blocks + parks beside the highway
+    const green=((k%3)+3)%3===0, xa=side<0?-170:30, xb=side<0?-30:170, z0=k*120+8;
+    x.fillStyle=green?'#cfe3c0':'#dcd7ca'; x.fillRect(mx(xa),my(z0),(xb-xa)*sc,104*sc);
+    if(!green){ x.fillStyle='#cbc5b6'; for(let b=0;b<4;b++) x.fillRect(mx(xa+8+b*34),my(z0+10),24*sc,40*sc); } }
+  x.fillStyle='#f1b45a'; x.fillRect(mx(-18),Y0,36*sc,H); x.fillStyle='#fff3d8'; x.fillRect(mx(-1.5),Y0,3*sc,H);     // the 8-lane highway + median
+  x.strokeStyle='rgba(255,255,255,.75)'; x.lineWidth=1; for(const lx of [-5,-8.5,-12,5,8.5,12]){ x.beginPath(); x.moveTo(mx(lx),Y0); x.lineTo(mx(lx),Y0+H); x.stroke(); }
+  x.strokeStyle='#3b82f6'; x.lineWidth=5; x.beginPath(); x.moveTo(mx(P.x),my(P.z)); x.lineTo(mx(P.x),Y0); x.stroke();   // route ahead
+  for(const k of traffic){ const X=mx(k.x), Y=my(k.z); if(X>X0&&X<X0+W&&Y>Y0&&Y<Y0+H){ x.fillStyle=k.cop?((k.mode==='chase'||k.mode==='bust')?'#e11':'#26f'):'#555'; x.fillRect(X-2,Y-3,4,6); } }   // other cars (police = blue, red when chasing)
+  for(const g of gantries){ const Y=my(g.position.z); if(Y>Y0&&Y<Y0+H){ x.fillStyle=GAME.sig==='R'?'#e22':GAME.sig==='Y'?'#fb2':'#2c4'; x.beginPath(); x.arc(mx(-21),Y,5,0,7); x.fill(); } }   // traffic signals
+  for(const c of cams){ const Y=my(c.position.z); if(Y>Y0&&Y<Y0+H){ x.fillStyle='#f60'; x.fillRect(mx(-21)-4,Y-4,8,8); } }     // speed cameras
+  x.save(); x.translate(cx,cy); x.rotate(Math.atan2(-Math.sin(P.yaw),Math.cos(P.yaw)));                                // our car: blue dot + heading arrow
+  x.fillStyle='rgba(59,130,246,.25)'; x.beginPath(); x.arc(0,0,16,0,7); x.fill();
+  x.fillStyle='#3b82f6'; x.beginPath(); x.arc(0,0,8,0,7); x.fill(); x.strokeStyle='#fff'; x.lineWidth=3; x.stroke();
+  x.fillStyle='#fff'; x.beginPath(); x.moveTo(0,-5); x.lineTo(4,3); x.lineTo(-4,3); x.fill(); x.restore();
+  rr(x,X0+6,Y0+6,170,24,8,'rgba(255,255,255,.9)'); tx(x,'NH-8 Expressway',X0+14,Y0+18,14,'#334','left');
+  rr(x,X0+6,Y0+H-30,86,24,8,'rgba(255,255,255,.9)'); tx(x,Math.round(Math.abs(P.speed)*3.6)+' km/h',X0+49,Y0+H-18,14,'#334');
+  tx(x,'N',X0+W-14,Y0+16,14,'#c33'); x.restore(); }
+function drawScreen(){
+  const s=UI.screen; if(!s) return; const x=s.x; UI.regions.length=0; x.fillStyle='#000'; x.fillRect(0,0,SW,SH);   // page 'off' = stay black
+  if(DS.page!=='off'){
+    const bg=x.createLinearGradient(0,0,0,SH); bg.addColorStop(0,'#10243a'); bg.addColorStop(1,'#071018'); x.fillStyle=bg; x.fillRect(0,0,SW,SH);
+    const d=new Date(), hh=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    tx(x,hh,14,13,20,'#fff','left'); tx(x,'Gear '+DS.gear+'   ·   18°C',SW-14,13,16,'#9fb4c8','right'); if(DS.hazard) tx(x,'HAZARD ON',SW/2,13,16,DS.blink?'#ff4a3a':'#703028');
+    if(DS.page==='home'){                                          // generic home screen: app tiles + clock widget (Maps and Climate really open)
+      [['Radio','#c0392b'],['Media','#8e44ad'],['Phone','#27ae60'],['Maps','#2980b9','nav'],['Climate','#16a0a8','climate'],['Settings','#7f8c8d'],['Camera','#d35400'],['Apps','#c9a227']].forEach((a,i)=>{
+        const X=14+(i%4)*112, Y=34+Math.floor(i/4)*82; rr(x,X,Y,100,70,12,a[1]); tx(x,a[0],X+50,Y+35,19);
+        addR(X,Y,100,70,()=>a[2]?setPage(a[2]):msg(a[0]+' is not available in this demo')); });
+      tx(x,hh,548,86,52); tx(x,d.toDateString().slice(0,10),548,126,16,'#9fb4c8'); tx(x,'Kia Seltos',548,166,18,'#6fb6ff');
+    } else if(DS.page==='nav'){ drawMap(x,8,28,624,164);
+    } else {                                                       // climate: passenger (left) | AC speed | driver (right) — mirrors the real seating
+      const c=DS.cl, side=(X,lab,k)=>{ rr(x,X,30,246,164,14,'#0e1c2b'); tx(x,lab+'  TEMP',X+123,46,16,'#6fb6ff');
+        sbtn(x,X+8,60,52,52,'−',()=>adjT(k,-1),'#24384d',34); sbtn(x,X+186,60,52,52,'+',()=>adjT(k,1),'#24384d',34); tx(x,c['t'+k]+'°C',X+123,86,38);
+        rr(x,X+8,122,110,64,10,'#3a2a22'); tx(x,'Seat heat',X+63,140,16); bars(x,X+13,162,c['h'+k],'#ff7a1a'); addR(X+8,122,110,64,()=>adjS('h',k,1));
+        rr(x,X+128,122,110,64,10,'#1f3347'); tx(x,'Seat vent',X+183,140,16); bars(x,X+133,162,c['v'+k],'#4fb8ff'); addR(X+128,122,110,64,()=>adjS('v',k,1)); };
+      side(8,'PASSENGER','P'); side(386,'DRIVER','D');
+      rr(x,260,30,120,164,14,'#0e1c2b'); tx(x,'AC SPEED',320,46,16,'#6fb6ff'); tx(x,c.fan===0?'OFF':String(c.fan),320,86,40);
+      sbtn(x,268,122,48,44,'−',()=>adjF(-1),'#24384d',30); sbtn(x,324,122,48,44,'+',()=>adjF(1),'#24384d',30);
+      for(let i=0;i<7;i++) rr(x,272+i*14,176,10,10+i*2,2,i<c.fan?'#4fb8ff':'#2b3b4c');
+    } }
+  s.t.needsUpdate=true; }
+const IC={                                                          // tiny button icons, drawn on 64x64 canvases
+  home:x=>{ x.strokeStyle=x.fillStyle='#fff'; x.lineWidth=6; x.lineJoin='round'; x.beginPath(); x.moveTo(10,32); x.lineTo(32,12); x.lineTo(54,32); x.stroke(); x.fillRect(18,32,28,22); },
+  nav:x=>{ x.fillStyle='#fff'; x.beginPath(); x.arc(32,26,15,0,7); x.fill(); x.beginPath(); x.moveTo(19,34); x.lineTo(32,60); x.lineTo(45,34); x.fill(); x.fillStyle='#111'; x.beginPath(); x.arc(32,26,6,0,7); x.fill(); },
+  fan:x=>{ x.fillStyle='#fff'; for(let i=0;i<4;i++){ x.save(); x.translate(32,32); x.rotate(i*Math.PI/2); x.beginPath(); x.ellipse(0,-14,7,13,0,0,7); x.fill(); x.restore(); } x.fillStyle='#111'; x.beginPath(); x.arc(32,32,5,0,7); x.fill(); },
+  off:x=>{ x.strokeStyle='#fff'; x.lineWidth=7; x.lineCap='round'; x.beginPath(); x.arc(32,35,19,-1.1,Math.PI*1.5-.5+1.6); x.stroke(); x.beginPath(); x.moveTo(32,8); x.lineTo(32,32); x.stroke(); },
+  haz:x=>{ x.strokeStyle='#fff'; x.lineWidth=6; x.lineJoin='round'; x.beginPath(); x.moveTo(32,8); x.lineTo(58,54); x.lineTo(6,54); x.closePath(); x.stroke(); x.beginPath(); x.moveTo(32,24); x.lineTo(44,46); x.lineTo(20,46); x.closePath(); x.stroke(); },
+  heat:x=>{ rr(x,14,10,18,36,6,'#fff'); rr(x,14,38,34,12,5,'#fff'); x.strokeStyle='#ff8a3a'; x.lineWidth=3; for(const px of [40,48,56]){ x.beginPath(); x.moveTo(px,6); x.bezierCurveTo(px-6,14,px+6,22,px,30); x.stroke(); } },
+  vent:x=>{ rr(x,14,10,18,36,6,'#fff'); rr(x,14,38,34,12,5,'#fff'); x.strokeStyle='#4fb8ff'; x.lineWidth=3; for(const px of [40,48,56]){ x.beginPath(); x.moveTo(px,6); x.lineTo(px,30); x.stroke(); } },
+  letter:(x,ch)=>tx(x,ch,32,34,46) };
+function buildDashUI(g){                                            // creates every interactive part of the dashboard inside group g
+  const flat=(t,w,h,X,Y,Z,ry=0,alpha=false)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t,toneMapped:false,transparent:alpha})); m.position.set(X,Y,Z); m.rotation.y=ry; g.add(m); return m; };
+  const reg=(o,name,need,fn,adj=false,noScale=false)=>{ o.userData.act={name,need,fn,adj}; o.userData.noScale=noScale; UI.hot.push(o); return o; };   // need: 'front' (both front seats) or 'driver'
+  const icon=draw=>{ const c=canv(64,64); draw(c.x); return c.t; };
+  const metal=M(0xc2c5c9,.25,.9);
+  const mkBtn=(X,Y,Z,w,h,tex,col,rx=0)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,Z); grp.rotation.x=rx; g.add(grp);
+    const face=new THREE.Mesh(new THREE.BoxGeometry(w,h,.012),new THREE.MeshStandardMaterial({color:col,roughness:.4,metalness:.5})); grp.add(face);
+    const sz=Math.min(w,h)*.8, p=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false})); p.position.z=.0065; grp.add(p); return {grp,face}; };
+  // central touchscreen (a click on it is converted from UV to canvas pixels and matched against UI.regions)
+  UI.screen=canv(SW,SH);
+  reg(flat(UI.screen.t,.4,.125,-.03,1.04,-.4715,.1),'Touchscreen','front',(d,uv)=>{ if(DS.page==='off'){ setPage('home'); return; }          // touching a dark screen wakes it
+    const px=uv.x*SW, py=(1-uv.y)*SH;
+    for(const r of UI.regions) if(px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h){ r.fn(d); break; } },false,true);
+  // instrument cluster + speedometer needle (a thin bar on a pivot; rotated every frame from the car's speed)
+  UI.cluster=canv(256,160); flat(UI.cluster.t,.26,.125,.34,1.04,-.4895);
+  const nd=new THREE.Group(); nd.position.set(.281,1.04,-.4875); g.add(nd);
+  nd.add(new THREE.Mesh(new THREE.BoxGeometry(.004,.05,.002).translate(0,.025,0),new THREE.MeshBasicMaterial({color:0xff4a2a,toneMapped:false})));
+  nd.add(new THREE.Mesh(new THREE.CircleGeometry(.006,12),new THREE.MeshBasicMaterial({color:0xdddddd,toneMapped:false})).translateZ(.0012));
+  UI.needle=nd; nd.rotation.z=UI.needleA;
+  // 4 buttons under the screen + the red HAZARD button in the middle
+  const row=[['Home',IC.home,()=>setPage('home')],['Navigation',IC.nav,()=>setPage('nav')],null,['Climate control',IC.fan,()=>setPage('climate')],['Screen OFF',IC.off,()=>setPage('off')]];
+  [-.18,-.09,0,.09,.18].forEach((X,i)=>{ const r=row[i];
+    if(!r){ const b=mkBtn(X,.8,-.405,.065,.04,icon(IC.haz),0xb02010); UI.hazMat=b.face.material; reg(b.grp,'Hazard / emergency lights','front',toggleHazard); return; }
+    reg(mkBtn(X,.8,-.405,.065,.04,icon(r[1]),0x1c1d20).grp,r[0],'front',r[2]); });
+  // physical climate controls: passenger temp (left), driver temp (right), fan, seat heat/vent buttons with LEDs
+  const knob=(X,Y,r,name,fn)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,-.405); g.add(grp);
+    const c=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.03,20),metal); c.rotation.x=Math.PI/2; grp.add(c);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(.005,r*.6,.002),new THREE.MeshBasicMaterial({color:0xff4a2a})); m.position.set(0,r*.55,.0165); grp.add(m);
+    return reg(grp,name,'front',fn,true); };
+  UI.kn={P:knob(-.15,.70,.03,'Passenger temperature',d=>adjT('P',d)), D:knob(.15,.70,.03,'Driver temperature',d=>adjT('D',d)), F:knob(0,.65,.02,'AC fan speed',adjF)};
+  UI.lcd=canv(192,48); flat(UI.lcd.t,.12,.03,0,.70,-.408);
+  const seatBtn=(X,key)=>{ const kind=key[0], side=key[1], b=mkBtn(X,.65,-.405,.045,.03,icon(kind==='h'?IC.heat:IC.vent),0x1c1d20);
+    const led=new THREE.Mesh(new THREE.BoxGeometry(.03,.006,.002),new THREE.MeshBasicMaterial({color:0x2a2a2a})); led.position.set(X,.674,-.4); g.add(led); UI.leds[key]=led.material;
+    reg(b.grp,(side==='D'?'Driver':'Passenger')+(kind==='h'?' seat heating':' seat ventilation'),'front',d=>adjS(kind,side,d),true); };
+  seatBtn(-.12,'hP'); seatBtn(-.06,'vP'); seatBtn(.06,'vD'); seatBtn(.12,'hD');
+  // driving-mode selector: P R N D buttons on the console (driver only) + a lever that tilts to match
+  GEARS.forEach((G,i)=>{ const b=mkBtn(-.1+i*.0667,.651,-.25,.05,.04,icon(x=>IC.letter(x,G)),0x1c1d20,-Math.PI/2); UI.gb[G]=b.face.material;
+    reg(b.grp,'Gear '+{P:'Park',R:'Reverse',N:'Neutral',D:'Drive'}[G],'driver',()=>setGear(G)); });
+  const lv=new THREE.Group(); lv.position.set(0,.655,-.1); g.add(lv);
+  lv.add(new THREE.Mesh(new THREE.BoxGeometry(.016,.1,.016).translate(0,.05,0),M(0x050607,.3,.3))); lv.add(new THREE.Mesh(new THREE.CylinderGeometry(.027,.027,.05,16).translate(0,.105,0),M(0x0a0a0b,.4,.3)));
+  UI.lever=lv;
+  // floating tooltip above the screen (works in VR too, where there is no mouse cursor)
+  UI.tip=canv(512,48); UI.tipMesh=flat(UI.tip.t,.34,.032,.12,1.2,-.49,0,true); UI.tipMesh.visible=false; UI.tipMesh.material.depthTest=false; UI.tipMesh.renderOrder=10; }
+
+/* ---------- 7. CAR FACTORY: Kia Seltos 2026 exterior (used for the player's SUV and all traffic) ---------- */
+// SMOOTHNESS: panels are RoundedBoxGeometry (boxes with soft, curved edges) instead of sharp boxes.
+// Everything is merged per material (paint, black plastic, silver, glass, lights) so each car is only ~6 meshes + 4 wheels.
+const BLK=M(0x0b0c0e,.45,.2), SIL=M(0xb9bdc2,.3,.8), GRY=M(0x4a5056,.4,.7), RIMD=M(0x1a1c1f,.4,.7), TIRE=M(0x121316,1);
+TIRE.side=THREE.DoubleSide;
+const GLS=new THREE.MeshStandardMaterial({color:0x1b252d,roughness:.12,metalness:.5,transparent:true,opacity:.55});
+const HEADL=basic(0xf4f8ff), TAILL=basic(0xe01818), AMB=basic(0x8a5400);
+// Wheel: rounded tyre (a "lathe" = profile spun around an axis) + dark disc + 5 silver turbine-style spokes. Built ONCE, shared by every car.
+function buildWheel(side){
+  const tyre=new THREE.LatheGeometry([[.255,-.1],[.335,-.115],[.365,-.085],[.37,0],[.365,.085],[.335,.115],[.255,.1]].map(([r,y])=>new THREE.Vector2(r,y)),28).rotateX(Math.PI/2);
+  const disc=mergeGeometries([new THREE.CylinderGeometry(.26,.26,.05,28).rotateX(Math.PI/2).translate(0,0,.07), new THREE.CylinderGeometry(.06,.06,.06,16).rotateX(Math.PI/2).translate(0,0,.1)]);
+  const sp=[new THREE.TorusGeometry(.255,.012,6,28).translate(0,0,.09)];
+  for(let i=0;i<5;i++){ const a=i*Math.PI*2/5; sp.push(new THREE.BoxGeometry(.2,.07,.03).rotateZ(a+.25).translate(Math.cos(a)*.15,Math.sin(a)*.15,.1)); }
+  return mergeGeometries([tyre,disc,mergeGeometries(sp)],true).rotateY(side*Math.PI/2);   // groups -> 3 materials; turn the face outward
+}
+const WG={'1':buildWheel(1),'-1':buildWheel(-1)};
+function makeCar(color,player=false,signal=false){
+  const car=new THREE.Group(), shell=new THREE.Group(); car.add(shell); car.userData.shell=shell;
+  const K=builder(shell), paint=M(color,.3,.15);
+  const tl=player?basic(0x6a1010):TAILL, am=player?basic(0x5a3a00):AMB;   // the player's lamp materials are private so only OUR car blinks
+  car.userData.lamps={tail:tl,amber:am};
+  const amL=signal?basic(0x5a3a00):am, amR=signal?basic(0x5a3a00):am; if(signal) car.userData.sig={L:amL,R:amR};   // traffic cars get left/right indicators that can blink on their own
+  const R=(mat,w,h,d,x,y,z,r=.1,seg=3)=>K.geo(new RoundedBoxGeometry(w,h,d,seg,r),mat,x,y,z);   // rounded panel
+  // --- body: soft main volume, raised hood, black lower cladding + bumpers, black two-tone roof ---
+  R(paint,1.82,.66,4.4,0,.78,0,.16,4); R(paint,1.72,.1,1.2,0,1.1,-1.55,.05);
+  R(BLK,1.86,.2,3.3,0,.55,0,.07,2); R(BLK,1.8,.3,.46,0,.6,-2.0,.08,2); R(BLK,1.8,.3,.46,0,.6,2.0,.08,2);
+  R(BLK,1.66,.07,2.45,0,1.665,.6,.03,2);
+  // --- glasshouse: raked windscreen, side glass leaning inward, steep tailgate glass, black pillars, silver roof rails ---
+  K.box(GLS,1.5,.71,.03,0,1.36,-.74,.745); K.box(GLS,1.45,.52,.03,0,1.36,1.885,-.25);
+  for(const sx of [-1,1]){ K.box(GLS,.03,.5,2.3,sx*.8,1.36,.62,0,0,sx*.12);
+    K.box(BLK,.05,.8,.07,sx*.78,1.36,-.74,.745); K.box(BLK,.03,.52,.1,sx*.83,1.36,.58); K.box(BLK,.05,.52,.16,sx*.82,1.36,1.84,0,0,sx*.12);   // A, B, C pillars
+    R(BLK,.1,.13,.2,sx*1.0,1.12,-.6,.04,2); K.box(GLS,.005,.1,.17,sx*.948,1.12,-.6); K.box(BLK,.1,.03,.05,sx*.94,1.08,-.6);   // wing mirrors
+    K.cyl(SIL,.018,2.2,sx*.74,1.72,.6,Math.PI/2);                                                                                                // roof rails
+    K.box(SIL,.03,.07,1.6,sx*.94,.5,.25);                                                                                                       // silver side sill
+    for(const z of [.12,1.2]) K.box(SIL,.015,.025,.14,sx*.915,1.04,z); }                                                                        // door handles
+  K.box(BLK,1.5,.05,.18,0,1.72,1.97); K.box(tl,.9,.012,.012,0,1.66,2.065);                      // roof spoiler + brake light
+  // --- FRONT (image 2): wide black grille with diamond pattern, tall vertical LED headlamps, silver chin, square fog-lamp pods ---
+  K.box(BLK,1.12,.26,.04,0,.93,-2.215);
+  for(let i=0;i<12;i++) for(let j=0;j<3;j++) K.box(GRY,.045,.045,.01,-.5+i*.0909+(j%2)*.045,.99-j*.07,-2.24,0,0,Math.PI/4);
+  for(const sx of [-1,1]){ K.box(BLK,.15,.34,.05,sx*.76,.95,-2.19); for(let i=0;i<3;i++) K.box(HEADL,.014,.27,.02,sx*(.72+i*.035),.95,-2.22);
+    K.box(SIL,.22,.2,.02,sx*.68,.62,-2.24); K.box(BLK,.17,.15,.02,sx*.68,.62,-2.245); K.cyl(HEADL,.03,.02,sx*.68,.62,-2.255,Math.PI/2); }
+  K.box(SIL,.9,.05,.06,0,.47,-2.235); K.box(SIL,.26,.05,.012,0,.73,-2.236);                          // skid plate + "Seltos" plate
+  // --- REAR (image 1): full-width red light bar joining two tall corner lamps, Kia badge, black bumper with silver trim ---
+  K.box(tl,1.5,.03,.02,0,1.06,2.205); K.box(SIL,.15,.04,.012,0,.98,2.208);
+  for(const sx of [-1,1]){ K.box(BLK,.13,.42,.03,sx*.78,.92,2.205); K.box(tl,.06,.34,.03,sx*.79,.92,2.21);
+    K.box(tl,.04,.2,.02,sx*.78,.6,2.24); }
+  K.box(SIL,1.1,.04,.06,0,.46,2.235); K.box(SIL,.26,.05,.012,0,.7,2.236);
+  for(const sx of [-1,1]){ const a=sx<0?amL:amR; K.box(a,.14,.035,.02,sx*.76,.745,-2.235); K.box(a,.07,.05,.02,sx*.79,.73,2.235); K.box(a,.012,.03,.09,sx*.915,.98,-1.75); }   // turn indicators: front, rear, side repeaters
+  // --- wheels: arch cladding ring + dark arch opening behind each wheel; the wheel sits in a pivot so it can roll ---
+  car.userData.wheels=[];
+  for(const sx of [-1,1]) for(const z of [-1.35,1.35]){
+    const pv=new THREE.Group(); pv.position.set(sx*.83,.37,z); shell.add(pv); pv.add(new THREE.Mesh(WG[sx],[TIRE,RIMD,SIL])); car.userData.wheels.push(pv);
+    K.geo(new THREE.TorusGeometry(.47,.035,6,20,Math.PI),BLK,sx*.93,.37,z,0,Math.PI/2,0);
+    K.geo(new THREE.CircleGeometry(.45,24,0,Math.PI),BLK,sx*.936,.37,z,0,sx*Math.PI/2,0); }
+  K.done(); shell.traverse(o=>o.isMesh&&(o.castShadow=true)); return car; }
+const carCircles=(x,z,yaw,r=.95)=>{ const fx=-Math.sin(yaw), fz=-Math.cos(yaw); return [-1.25,0,1.25].map(o=>({x:x+fx*o,z:z+fz*o,r})); }; // 3 circles = car hitbox
+
+
+let POLTEX=null;
+function makePolice(){                                              // a normal car body + white/blue livery + roof light bar with its own blinking materials
+  const m=makeCar(0xf3f5f7,false,true), sh=m.userData.shell, blueM=basic(0x1b4fa8), rm=basic(0x2a0606), bm=basic(0x060c24);
+  if(!POLTEX){ const t=canv(256,64); rr(t.x,0,0,256,64,8,'#1b4fa8'); tx(t.x,'HIGHWAY POLICE',128,34,30); POLTEX=t.t; }
+  for(const s of [-1,1]){
+    const st=new THREE.Mesh(new THREE.BoxGeometry(.012,.1,3.4),blueM); st.position.set(s*.925,.72,.1); sh.add(st);                                    // blue stripe
+    const lb=new THREE.Mesh(new THREE.PlaneGeometry(1.5,.28),new THREE.MeshBasicMaterial({map:POLTEX,toneMapped:false})); lb.position.set(s*.93,.95,.1); lb.rotation.y=s*Math.PI/2; sh.add(lb); }   // door lettering
+  const base=new THREE.Mesh(new THREE.BoxGeometry(1.05,.07,.3),BLK); base.position.set(0,1.76,.3); sh.add(base);
+  const r=new THREE.Mesh(new THREE.BoxGeometry(.48,.07,.26),rm); r.position.set(-.27,1.82,.3); sh.add(r);
+  const b=new THREE.Mesh(new THREE.BoxGeometry(.48,.07,.26),bm); b.position.set(.27,1.82,.3); sh.add(b);
+  m.userData.lb={red:rm,blue:bm,on:null}; return m; }
+
+/* ---------- 8. PLAYER'S SUV, TRAFFIC, INSPECTION PEDESTAL ---------- */
+const P={x:-16.7,z:0,yaw:0,speed:0,steer:0,stIn:0,lat:0,w:0,kin:0,vx:0,vz:0,om:0,invM:1/1300,invI:1/2260}, W={x:0,z:0};         // P = car state, W = walker state
+const car=makeCar(0xcdd5d0,true), cp=makeCockpit(); car.add(cp.g); scene.add(car);
+const avatar=new THREE.Mesh(new THREE.CapsuleGeometry(.25,1.1,4,8),M(0x2f4a63)); avatar.position.y=.8; const av=new THREE.Group(); av.add(avatar); scene.add(av);
+const traffic=[]; const PAINT=[0xe9e9e6,0x2f4a63,0xb33a3a,0xc9c7bd,0x555a60,0x3b6b52,0xe0b04a,0x8d9aa8], LCR=[25,21,17,13];   // LCR = cruise speed (m/s) of each lane; the fast lane is next to the median
+function newCar(mesh,side,li,z){ const cr=Math.random()*2, cruise=LCR[li]+cr;                  // every car is also a physics body (x,z,yaw,vx,vz,om,invM,invI) so it can collide
+  const k={mesh,mode:'traffic',side,li,cr,x:side*LANE[li],lane:side*LANE[li],z,yaw:side<0?0:Math.PI,base:side<0?0:Math.PI,ph:Math.random()*6.28,dirZ:side<0?-1:1,v:cruise,cruise,
+    lv:0,vx:0,vz:0,om:0,invM:1/1500,invI:0,pending:0,sigT:0,sigR:false,lcT:MU.randFloat(4,14),speed:0,lat:0,w:0,kin:0,steer:0,seeT:0,stopT:0,farT:0,bustT:0};
+  traffic.push(k); scene.add(mesh); return k; }
+for(const side of [-1,1]) LANE.forEach((lx,li)=>{                    // 4 cars per carriageway, one per lane to start with
+  let z=(Math.random()-.5)*500; if(Math.abs(z)<40) z+=80; newCar(makeCar(PAINT[(li+(side>0?4:0))],false,true),side,li,z); });
+const cops=[]; for(let i=0;i<2;i++){ const k=newCar(makePolice(),-1,1+i,i?-300:260); k.mode='patrol'; k.cop=true; k.cruise=24-i*2; k.v=k.cruise; cops.push(k); }   // 2 patrol cars on OUR carriageway
+
+/* ---------- 8b. SIGNAL GANTRIES + SPEED CAMERAS ---------- */
+// POOLING: only 3 gantries and 3 cameras exist. Every frame they are re-placed at the nearest "slots" along the road
+// (a signal every 400 m, a camera every 700 m), so the highway feels endless but costs almost nothing.
+const GREY=M(0x8d9298,.6,.5), DARKG=M(0x1a1c1f,.7,.3), WHITEB=basic(0xf2f2f2), CAMM=M(0x60666c,.5,.6), LENS=M(0x050607,.2,.5);
+const SIGL={R:basic(0x330606),Y:basic(0x332a06),G:basic(0x2cff6a)}, extra=[];     // SIGL: three SHARED lamp materials (all signals show the same colour); extra = pole hitboxes
+function makeGantry(){
+  const g=new THREE.Group(), K=builder(g);
+  for(const s of [-1,1]) K.cyl(GREY,.22,7.4,s*19.5,3.7,0); K.box(GREY,39.6,.45,.45,0,7.2,0);                       // two poles + a beam across all 8 lanes
+  for(const s of [-1,1]){ const x=s*9, fz=s<0?.19:-.19;                                                              // one signal head per carriageway, facing the oncoming cars
+    K.box(DARKG,.6,1.7,.35,x,6.0,0); [['R',.55],['Y',0],['G',-.55]].forEach(([c,dy])=>K.cyl(SIGL[c],.2,.05,x,6.0+dy,fz,Math.PI/2)); }
+  K.box(WHITEB,14,.02,.5,-8.6,.06,5); K.box(WHITEB,14,.02,.5,8.6,.06,-5);                                          // stop lines (one per carriageway)
+  K.done(); return g; }
+function makeCam(){
+  const g=new THREE.Group(), K=builder(g), fm=basic(0x333333);
+  K.cyl(GREY,.2,7,-19.5,3.5,0); K.box(GREY,14,.3,.3,-12.5,6.9,0); K.box(CAMM,.7,.5,.9,-9,6.55,0); K.cyl(LENS,.17,.1,-9,6.55,.5,Math.PI/2); K.done();   // pole, arm, camera body, lens
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(.3,.14,.05),fm); fl.position.set(-8.6,6.9,.47); g.add(fl); g.userData.flash=fm;                         // flash lamp (turns white when it fires)
+  const t=canv(128,128); t.x.fillStyle='#fff'; t.x.beginPath(); t.x.arc(64,64,60,0,7); t.x.fill(); t.x.strokeStyle='#d22'; t.x.lineWidth=12; t.x.stroke(); tx(t.x,'100',64,66,44,'#111');
+  const sg=new THREE.Mesh(new THREE.PlaneGeometry(1.1,1.1),new THREE.MeshBasicMaterial({map:t.t,toneMapped:false})); sg.position.set(-19.5,5,.25); g.add(sg);   // speed-limit sign on the pole
+  return g; }
+const gantries=[], cams=[];
+for(let i=0;i<3;i++){ const g=makeGantry(); scene.add(g); g.userData.poles=[-1,1].map(s=>{ const o={x:s*19.5,z:0,r:.35}; extra.push(o); return o; }); gantries.push(g); }
+for(let i=0;i<3;i++){ const c=makeCam(); scene.add(c); const o={x:-19.5,z:0,r:.35}; extra.push(o); c.userData.pole=o; cams.push(c); }
+const GSP=400, CSP=700, COFF=350, CYC=44;
+function placeInfra(z){
+  const gi=Math.round(z/GSP), ci=Math.round((z-COFF)/CSP);
+  for(let i=-1;i<=1;i++){ const gx=gantries[((gi+i)%3+3)%3], cx=cams[((ci+i)%3+3)%3], gz=(gi+i)*GSP, cz=COFF+(ci+i)*CSP;
+    gx.position.z=gz; for(const o of gx.userData.poles) o.z=gz; cx.position.z=cz; cx.userData.pole.z=cz; } }
+const sigState=t=>{ const u=t%CYC; return u<26?'G':u<29?'Y':'R'; };               // 26 s green, 3 s yellow, 15 s red
+const podBase=new THREE.Vector3(-23,1.6,-8), podSolid={x:-23,z:-8,r:.95};   // static hitbox for the pedestal
+const ped=C(scene,.8,1.1,M(0xe9e6df,.9),-23,.55,-8); ped.castShadow=true;
+const podItem=new THREE.Group(); podItem.position.copy(podBase); scene.add(podItem);
+const podInner=makeCockpit(false,false).g; podInner.scale.setScalar(.5); podItem.add(podInner); // same factory, reused at half size
+let grabbed=false;
+
+/* ---------- 9. STATE, INPUT ---------- */
+let seat=0, mode='drive', tp=false, yaw=0, pitch=0, shake=0, locked=false, dragging=false, msgT=0, inXR=false;
+const SEATS=[{x:.37,z:.3},{x:-.37,z:.3},{x:-.46,z:1.2},{x:0,z:1.2},{x:.46,z:1.2}];     // eye positions (car-local)
+const SEATNAMES=['Driver seat','Front passenger','Rear left','Rear middle','Rear right'];
+function goSeat(i){ mode='drive'; seat=i; yaw=0; pitch=0; msg(SEATNAMES[i]); }                 // teleport straight into a seat
+const keys={}; const dirV=new THREE.Vector3(), eye=new THREE.Vector3(), tv=new THREE.Vector3();
+function msg(t){ $('hud').dataset.m=t; msgT=2; }
+
+// ---- DASH INTERACTION: one Raycaster + the UI.hot list. A mouse ray (from the crosshair or the cursor) and a VR controller ray both
+//      go through pickHot() -> press(), so every control behaves identically on desktop and in VR. ----
+const ray=new THREE.Raycaster(), rv=new THREE.Vector2(), ptr={x:0,y:0}, tm=new THREE.Matrix4(), ctrls=[]; ray.far=1.8;      // reach = 1.8 m
+function hotOf(o){ while(o&&!(o.userData&&o.userData.act)) o=o.parent; return o; }          // a hit on a child mesh -> the registered control
+function pickHot(){ for(const h of ray.intersectObjects(UI.hot,true)){ const o=hotOf(h.object); if(o&&UI.hot.includes(o)) return {o,h}; } return null; }
+function aimDesktop(){ camera.updateMatrixWorld(); ray.setFromCamera(locked?rv.set(0,0):rv.set(ptr.x,ptr.y),camera); }
+function aimCtrl(c){ c.updateMatrixWorld(true); tm.identity().extractRotation(c.matrixWorld); ray.ray.origin.setFromMatrixPosition(c.matrixWorld); ray.ray.direction.set(0,0,-1).applyMatrix4(tm); }
+function usable(a){ if(mode!=='drive'||(tp&&!inXR)) return 'Sit inside the car first'; if(a.need==='driver'&&seat!==0) return 'Driver seat only'; if(seat>1) return 'Front seats only'; return ''; }
+function tick(f=700){ if(!ac||!soundOn) return; const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain(); o.type='square'; o.frequency.value=f;
+  g.gain.setValueAtTime(.05,t); g.gain.exponentialRampToValueAtTime(.001,t+.05); o.connect(g); g.connect(master); o.start(t); o.stop(t+.06); }
+function press(p,dir){                                                                        // dir: -1 = "down" (right-click / Shift / VR grip)
+  const o=p.o, a=o.userData.act, bad=usable(a); if(bad){ msg(bad); tick(200); return; }
+  let d=dir||1; if(a.adj&&!dir&&UI.kn&&Object.values(UI.kn).includes(o)) d=(cp.g.worldToLocal(p.h.point.clone()).x-o.position.x)<0?-1:1;   // knob: left half = down, right half = up
+  a.fn(d,p.h.uv); o.userData.pt=.12; tick(a.need==='driver'?520:680); }
+function setHover(o){ if(o===UI.hover) return; const old=UI.hover; if(old&&!old.userData.noScale&&!(old.userData.pt>0)) old.scale.setScalar(1);
+  UI.hover=o; if(o&&!o.userData.noScale) o.scale.setScalar(1.12); const a=o&&o.userData.act; setTip(a?a.name+(usable(a)?'  ·  '+usable(a):''):null); }
+uiSync(); syncGear(); applyLamps();                                                           // paint every screen once at start
+
+addEventListener('keydown',e=>{ keys[e.code]=true; if(e.repeat) return;
+  const sm=/^(Digit|Numpad)([1-5])$/.exec(e.code); if(sm) goSeat(+sm[2]-1);
+  if(e.code==='KeyF'&&!inXR) tp=!tp; if(e.code==='KeyE') toggleCar(); if(e.code==='KeyM') toggleSound(); if(e.code==='KeyG') grabbed=!grabbed;
+  if(['Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault(); });
+addEventListener('keyup',e=>keys[e.code]=false);
+let dX=0, dY=0; dom.addEventListener('mousedown',e=>{ dragging=true; dX=e.clientX; dY=e.clientY; }); addEventListener('mouseup',()=>dragging=false);
+dom.addEventListener('click',e=>{ if(inXR) return;
+  if(Math.hypot(e.clientX-dX,e.clientY-dY)<6){ aimDesktop(); const p=pickHot(); if(p){ press(p,e.shiftKey?-1:undefined); return; } }   // a click on a control presses it (a drag does not)
+  if(!locked&&dom.requestPointerLock){ try{ const q=dom.requestPointerLock(); q&&q.catch&&q.catch(()=>{}); }catch(err){} } });
+dom.addEventListener('contextmenu',e=>{ e.preventDefault(); if(inXR) return; aimDesktop(); const p=pickHot(); if(p) press(p,-1); });
+document.addEventListener('pointerlockchange',()=>{ locked=document.pointerLockElement===dom; $('cross').style.display=locked?'block':'none'; });
+addEventListener('mousemove',e=>{ ptr.x=(e.clientX/innerWidth)*2-1; ptr.y=-(e.clientY/innerHeight)*2+1; if(inXR||!(locked||dragging)) return;      // pointer-lock OR click-drag look
+  yaw-=e.movementX*.0022; pitch=MU.clamp(pitch-e.movementY*.0022,-1.4,1.4); });
+addEventListener('wheel',e=>{ if(inXR) return; aimDesktop(); const hp=pickHot(); if(hp&&hp.o.userData.act.adj){ press(hp,e.deltaY<0?1:-1); return; }   // wheel over a knob/seat button adjusts it
+   camera.fov=MU.clamp(camera.fov+e.deltaY*.03,35,90); camera.updateProjectionMatrix(); },{passive:true});
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+$('start').addEventListener('click',()=>{ $('start').style.display='none'; startAudio(); });
+$('snd').addEventListener('click',toggleSound);
+function toggleCar(){
+  if(mode==='drive'){ if(Math.abs(P.speed)>2) return msg('Stop the car first');
+    const c=Math.cos(P.yaw), s=Math.sin(P.yaw); W.x=P.x-1.9*c+.2*s; W.z=P.z+1.9*s+.2*c; yaw=P.yaw+yaw; mode='walk'; DS.gear='P'; syncGear(); }   // step out on the far (non-road) side
+  else if(Math.hypot(W.x-P.x,W.z-P.z)<4){ mode='drive'; seat=0; yaw=0; P.speed=0; } else msg('Walk up to the SUV to get in'); }
+
+/* ---------- 10. AUDIO: an ORIGINAL "outrun" synthwave track, synthesised live with the Web Audio API (no files) ---------- */
+// Style notes (the "recipe" for that dark 80s night-drive sound):  ~91 BPM · four-on-the-floor kick · gated clap on beats 2+4 ·
+// pulsing 8th-note bass · lush detuned saw pad that "pumps" (ducks) with every kick (fake sidechain compression) ·
+// plucky filtered arpeggio · a simple, sad lead melody · dotted-8th echo + big reverb on top. It loops forever; every second
+// pass adds the lead melody so it keeps evolving. Everything below is written from scratch for this scene.
+let ac=null, master=null, soundOn=false, step=0, nextT=0, noiseBuf=null; const AB={};
+const BPM=91, SP=60/BPM/4, mf=n=>440*Math.pow(2,(n-69)/12);                     // SP = length of one 16th note in seconds
+const prog=[[57,60,64,67],[53,57,60,64],[48,52,55,59],[52,56,59,62]];             // Am7 · Fmaj7 · Cmaj7 · E7 (MIDI notes), 2 bars each = an 8-bar loop
+const lead=[ [[2,76,5],[8,74,3],[12,72,4],[20,71,6],[28,72,3]], [[2,72,5],[8,69,3],[12,72,4],[20,74,6],[28,72,3]],     // [step, midi note, length in 16ths]
+             [[2,76,5],[8,79,3],[12,76,4],[20,74,6],[28,72,3]], [[2,76,5],[8,74,3],[12,71,4],[20,68,6],[28,71,3]] ];
+function voice(type,midi,t,dur,vol,cut,att,det,dest){                           // one synth note: oscillator -> low-pass filter -> volume envelope
+  const o=ac.createOscillator(), f=ac.createBiquadFilter(), g=ac.createGain(); o.type=type; o.frequency.value=mf(midi); o.detune.value=det;
+  f.type='lowpass'; f.frequency.value=cut; f.Q.value=2; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+att); g.gain.linearRampToValueAtTime(0,t+dur);
+  o.connect(f); f.connect(g); g.connect(dest); o.start(t); o.stop(t+dur+.05); }
+function noiseHit(t,dur,vol,type,freq,q=1){                                     // filtered white noise = hats and the body of the clap
+  const s=ac.createBufferSource(), f=ac.createBiquadFilter(), g=ac.createGain(); s.buffer=noiseBuf; f.type=type; f.frequency.value=freq; f.Q.value=q;
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.001,t+dur); s.connect(f); f.connect(g); g.connect(AB.drum); s.start(t,Math.random()*.5); s.stop(t+dur+.02); }
+function kick(t){                                                               // sine that drops in pitch = a kick drum
+  const o=ac.createOscillator(), g=ac.createGain(); o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(42,t+.12);
+  g.gain.setValueAtTime(1,t); g.gain.exponentialRampToValueAtTime(.001,t+.32); o.connect(g); g.connect(AB.drum); o.start(t); o.stop(t+.35);
+  AB.duck.gain.cancelScheduledValues(t); AB.duck.gain.setValueAtTime(.28,t); AB.duck.gain.linearRampToValueAtTime(1,t+SP*3.2); }   // pad + arp dip then swell back = the "pump"
+function clap(t){ for(let i=0;i<3;i++) noiseHit(t+i*.011,.09,.5,'bandpass',1500,.8); noiseHit(t+.033,.22,.45,'bandpass',1800,.7);   // 3 quick bursts + a tail
+  const o=ac.createOscillator(), g=ac.createGain(); o.type='triangle'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(140,t+.08);
+  g.gain.setValueAtTime(.3,t); g.gain.exponentialRampToValueAtTime(.001,t+.12); o.connect(g); g.connect(AB.drum); o.start(t); o.stop(t+.14); }
+function schedule(){                                                            // called every 100 ms: queues the next few notes slightly ahead of time (tight timing)
+  if(nextT<ac.currentTime) nextT=ac.currentTime+.05;                            // if the tab was asleep, don't replay a burst of missed notes
+  while(nextT<ac.currentTime+.4){
+    const t=nextT, s=step%128, ci=s>>5, cs=s&31, b=s&15, ch=prog[ci], loop=Math.floor(step/128);
+    if(cs===0) for(const n of ch) for(const d of [-11,11]) voice('sawtooth',n,t,SP*32.5,.05,1100,1.6,d,AB.duck);          // pad: 4 notes x 2 detuned saws, slow attack
+    if(b%4===0) kick(t); if(b===4||b===12) clap(t);                                                                      // drums
+    if(b%2===0){ if(b===6||b===14) noiseHit(t,.2,.13,'highpass',7000); else noiseHit(t,.04,.12+(b%4===0?.03:0),'highpass',8500); }   // hats (open on the off-beats)
+    if(b%2===0){ const r=ch[0]-24+((b===6||b===14)?12:0); voice('sawtooth',r,t,SP*1.7,.3,380+(cs>15?220:0),.004,0,AB.bass); voice('sine',r,t,SP*1.9,.3,300,.004,0,AB.bass); }   // pulsing 8th-note bass + sub
+    voice('sawtooth',ch[[0,2,1,3,2,3,1,2][s%8]]+12,t,SP*1.4,.032,1100+1800*(.5+.5*Math.sin(s/128*Math.PI*2)),.005,0,AB.duck);   // 16th arpeggio, filter slowly opens + closes
+    if(loop%2===1) for(const [st,m,len] of lead[ci]) if(st===cs){ voice('sawtooth',m,t,SP*len,.07,3200,.03,7,AB.lead); voice('square',m,t,SP*len,.04,2200,.03,-7,AB.lead); }   // lead joins on every 2nd pass
+    nextT+=SP; step++; } }
+function buildAudio(){
+  ac=new (window.AudioContext||window.webkitAudioContext)(); master=ac.createGain(); master.gain.value=0;
+  const comp=ac.createDynamicsCompressor(); comp.threshold.value=-18; comp.ratio.value=3; comp.connect(master); master.connect(ac.destination);   // glues everything together
+  const len=Math.floor(ac.sampleRate*2.2), ir=ac.createBuffer(2,len,ac.sampleRate);                               // reverb = convolution with a fading burst of noise (generated, not a file)
+  for(let c=0;c<2;c++){ const d=ir.getChannelData(c); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.6); }
+  const rev=ac.createConvolver(); rev.buffer=ir; const revOut=ac.createGain(); revOut.gain.value=.5; rev.connect(revOut); revOut.connect(comp);
+  const dly=ac.createDelay(2), fb=ac.createGain(), dlp=ac.createBiquadFilter(); dly.delayTime.value=SP*6; fb.gain.value=.38; dlp.type='lowpass'; dlp.frequency.value=2500;   // dotted-8th echo, each repeat a bit darker
+  dly.connect(dlp); dlp.connect(fb); fb.connect(dly); dlp.connect(comp);
+  const bus=(vol,rv,dl)=>{ const g=ac.createGain(); g.gain.value=vol; g.connect(comp); if(rv){ const r=ac.createGain(); r.gain.value=rv; g.connect(r); r.connect(rev); } if(dl){ const d=ac.createGain(); d.gain.value=dl; g.connect(d); d.connect(dly); } return g; };
+  const mix=bus(.7,.35,.3); AB.duck=ac.createGain(); AB.duck.connect(mix);                                         // pad + arp go through the "duck" (sidechain) gain
+  AB.lead=bus(.8,.35,.45); AB.bass=bus(.9,0,0); AB.drum=bus(1,.12,0);
+  noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate); { const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+  nextT=ac.currentTime+.15; setInterval(schedule,100); }
+function startAudio(){ if(!ac) buildAudio(); ac.resume(); if(!soundOn) toggleSound(); }
+function setSiren(vol){                                              // police siren: a triangle wave whose pitch is swept up and down by a slow LFO ("wee-woo"); louder when a chasing cop is close
+  if(!ac) return; if(!AB.siren){ const o=ac.createOscillator(), l=ac.createOscillator(), lg=ac.createGain(), g=ac.createGain(); o.type='triangle'; o.frequency.value=900; l.frequency.value=.7; lg.gain.value=320;
+    l.connect(lg); lg.connect(o.frequency); o.connect(g); g.gain.value=0; g.connect(master); o.start(); l.start(); AB.siren=g; }
+  AB.siren.gain.setTargetAtTime(vol*.07,ac.currentTime,.15); }
+function toggleSound(){ if(!ac) return startAudio(); soundOn=!soundOn; master.gain.setTargetAtTime(soundOn?.5:0,ac.currentTime,.1); $('snd').textContent='Sound: '+(soundOn?'on':'off')+' (M)'; }
+
+/* ---------- 11. WEBXR (Meta Quest) ---------- */
+$('vr').appendChild(VRButton.createButton(renderer));
+renderer.xr.addEventListener('sessionstart',()=>{ inXR=true; tp=false; $('start').style.display='none'; camera.position.set(0,0,0); camera.rotation.set(0,0,0); startAudio(); });
+renderer.xr.addEventListener('sessionend',()=>{ inXR=false; });
+for(const i of [0,1]){ const c=renderer.xr.getController(i); rig.add(c); ctrls.push(c);
+  const L=new THREE.Mesh(new THREE.CylinderGeometry(.0025,.0025,1,6).rotateX(Math.PI/2).translate(0,0,-.5),new THREE.MeshBasicMaterial({color:0x35b6ff})); L.visible=false; c.add(L); c.userData.laser=L;   // visible aiming laser
+  c.addEventListener('selectstart',()=>{ aimCtrl(c); const p=pickHot(); if(p) press(p); else if(Math.hypot(eye.x-podBase.x,eye.z-podBase.z)<5) grabbed=true; });   // trigger: press a control, else grab the dash model
+  c.addEventListener('selectend',()=>grabbed=false);
+  c.addEventListener('squeezestart',()=>{ aimCtrl(c); const p=pickHot(); if(p) press(p,-1); }); }                                                                    // grip: decrease / step backwards
+let vx=0,vy=0,snapped=false; const prevBtn={};
+function pollXR(){ vx=vy=0; const s=renderer.xr.getSession(); if(!s) return;
+  for(const src of s.inputSources){ const gp=src.gamepad; if(!gp) continue; const h=src.handedness;
+    if(h==='left'){ vx=Math.abs(gp.axes[2])>.15?gp.axes[2]:0; vy=Math.abs(gp.axes[3])>.15?gp.axes[3]:0; }  // left stick glide
+    if(h==='right'){ const sx=gp.axes[2]||0; if(Math.abs(sx)>.7){ if(!snapped){ yaw-=Math.sign(sx)*Math.PI/6; snapped=true; } } else snapped=false; } // 30° snap turn
+    [[3,()=>goSeat((seat+1)%5)],[4,toggleSound],[5,toggleCar]].forEach(([i,fn])=>{ const k=h+i, p=!!(gp.buttons[i]&&gp.buttons[i].pressed); if(p&&!prevBtn[k]) fn(); prevBtn[k]=p; }); } }
+
+/* ---------- 12. COLLISION PHYSICS ---------- */
+// Cars are real rectangles (1.8 x 4.2 m, oriented boxes) with mass and rotational inertia, not circles.
+//  1. DETECT  – box-vs-box uses the Separating Axis Theorem (SAT): it finds the axis of least overlap = the
+//               contact normal, plus the deepest corner = contact point. Trees/pedestal are circles, the median a wall.
+//  2. RESPOND – an IMPULSE changes both bodies' velocity AND spin, depending on where the hit lands
+//               (off-centre hit => the car rotates). Restitution = bounciness, friction = scraping along the other body.
+//  3. SEPARATE – bodies are pushed apart in proportion to how light they are (a parked/static thing never moves).
+const HW=.9, HL=2.2, STATIC={x:0,z:0,vx:0,vz:0,om:0,invM:0,invI:0}, ALL=[P,...traffic]; let cd=0;
+function corners(b){ const c=Math.cos(b.yaw), s=Math.sin(b.yaw);
+  return [[-HW,-HL],[HW,-HL],[HW,HL],[-HW,HL]].map(([lx,lz])=>[b.x+lx*c+lz*s, b.z-lx*s+lz*c]); }
+function sat(a,b){                                                  // oriented box vs oriented box
+  const ca=Math.cos(a.yaw), sa=Math.sin(a.yaw), cb=Math.cos(b.yaw), sb=Math.sin(b.yaw), dx=a.x-b.x, dz=a.z-b.z;
+  let best=1e9, nx=0, nz=0;
+  for(const [ux,uz] of [[ca,-sa],[sa,ca],[cb,-sb],[sb,cb]]){        // the 4 face directions of the two boxes
+    const ra=HW*Math.abs(ux*ca-uz*sa)+HL*Math.abs(ux*sa+uz*ca), rb=HW*Math.abs(ux*cb-uz*sb)+HL*Math.abs(ux*sb+uz*cb);
+    const d=dx*ux+dz*uz, ov=ra+rb-Math.abs(d); if(ov<=0) return null;   // a gap on any axis = no collision
+    if(ov<best){ best=ov; nx=d<0?-ux:ux; nz=d<0?-uz:uz; } }          // normal points from b to a
+  const ran=HW*Math.abs(nx*ca-nz*sa)+HL*Math.abs(nx*sa+nz*ca), rbn=HW*Math.abs(nx*cb-nz*sb)+HL*Math.abs(nx*sb+nz*cb);
+  const pts=[]; let bd=-1e9;                                        // contact point = average of the (near-)deepest corners:
+  for(const q of corners(a)){ const d=rbn-((q[0]-b.x)*nx+(q[1]-b.z)*nz); pts.push([q[0],q[1],d]); bd=Math.max(bd,d); }
+  for(const q of corners(b)){ const d=ran+((q[0]-a.x)*nx+(q[1]-a.z)*nz); pts.push([q[0],q[1],d]); bd=Math.max(bd,d); }
+  let px=0, pz=0, cnt=0;                                            // face-on hit => 2 corners tie => centred, no fake spin;
+  for(const q of pts) if(q[2]>=bd-.12){ px+=q[0]; pz+=q[1]; cnt++; } // corner hit => 1 corner => it spins the car realistically
+  px/=cnt; pz/=cnt;
+  return {n:[nx,nz],pen:best,px,pz}; }
+function circleObb(a,cx,cz,r){                                      // circle (tree, walker) vs oriented box
+  const c=Math.cos(a.yaw), s=Math.sin(a.yaw), dx=cx-a.x, dz=cz-a.z, lx=dx*c-dz*s, lz=dx*s+dz*c;   // circle in the car's own frame
+  const qx=MU.clamp(lx,-HW,HW), qz=MU.clamp(lz,-HL,HL), ex=lx-qx, ez=lz-qz, d=Math.hypot(ex,ez); if(d>=r) return null;
+  const nlx=d>1e-4?ex/d:(lx>=0?1:-1), nlz=d>1e-4?ez/d:0;
+  return {n:[-(nlx*c+nlz*s),-(-nlx*s+nlz*c)], pen:r-d, px:a.x+qx*c+qz*s, pz:a.z-qx*s+qz*c}; }
+function resolve(A,B,n,pen,px,pz,e){                                // impulse response between two bodies; returns impact speed
+  const rax=px-A.x, raz=pz-A.z, rbx=px-B.x, rbz=pz-B.z, tot=A.invM+B.invM;
+  const rel=()=>[A.vx-A.om*raz-(B.vx-B.om*rbz), A.vz+A.om*rax-(B.vz+B.om*rbx)];    // relative velocity AT the contact point
+  const imp=(jx,jz)=>{ A.vx+=jx*A.invM; A.vz+=jz*A.invM; A.om+=(rax*jz-raz*jx)*A.invI; B.vx-=jx*B.invM; B.vz-=jz*B.invM; B.om-=(rbx*jz-rbz*jx)*B.invI; };
+  let [vx,vz]=rel(), vn=vx*n[0]+vz*n[1], hit=0;
+  if(vn<0){ hit=-vn; const ran=rax*n[1]-raz*n[0], rbn=rbx*n[1]-rbz*n[0];
+    const j=-(1+e)*vn/(tot+ran*ran*A.invI+rbn*rbn*B.invI); imp(j*n[0],j*n[1]);        // normal impulse (bounce)
+    [vx,vz]=rel(); vn=vx*n[0]+vz*n[1]; let tx=vx-vn*n[0], tz=vz-vn*n[1]; const tl=Math.hypot(tx,tz);
+    if(tl>1e-3){ tx/=tl; tz/=tl; const rat=rax*tz-raz*tx, rbt=rbx*tz-rbz*tx;           // friction impulse (scrape), capped by μ·j
+      const jt=MU.clamp(-tl/(tot+rat*rat*A.invI+rbt*rbt*B.invI),-.35*j,.35*j); imp(jt*tx,jt*tz); } }
+  if(tot>0){ const c=Math.max(pen-.005,0)*.8, wa=A.invM/tot; A.x+=n[0]*c*wa; A.z+=n[1]*c*wa; B.x-=n[0]*c*(1-wa); B.z-=n[1]*c*(1-wa); }
+  return hit; }
+function physics(){
+  const parked=mode==='walk'; P.invM=parked?0:1/1300; P.invI=parked?0:1/2260;     // a parked SUV is immovable
+  let hit=0; const wz=world.position.z;
+  for(let it=0;it<3;it++){                                          // a few passes so stacked contacts settle
+    if(!parked){ for(const t of trees){ if(Math.abs(t.z+wz-P.z)>12||Math.abs(t.x-P.x)>12) continue;
+        const h=circleObb(P,t.x,t.z+wz,t.r); if(h) hit=Math.max(hit,resolve(P,STATIC,h.n,h.pen,h.px,h.pz,.15)); }
+      const h=circleObb(P,podSolid.x,podSolid.z,podSolid.r); if(h) hit=Math.max(hit,resolve(P,STATIC,h.n,h.pen,h.px,h.pz,.15));
+      for(const t of extra){ if(Math.abs(t.z-P.z)>12||Math.abs(t.x-P.x)>12) continue; const q=circleObb(P,t.x,t.z,t.r); if(q) hit=Math.max(hit,resolve(P,STATIC,q.n,q.pen,q.px,q.pz,.2)); } }   // signal / camera poles
+    for(let i=0;i<ALL.length;i++) for(let j=i+1;j<ALL.length;j++){ const a=ALL[i], b=ALL[j];   // car vs car
+      if(Math.abs(a.x-b.x)>5||Math.abs(a.z-b.z)>5) continue; const h=sat(a,b);
+      if(h){ const v=resolve(a,b,h.n,h.pen,h.px,h.pz,.2); if(i===0) hit=Math.max(hit,v); } } }
+  if(!parked){ const c=Math.cos(P.yaw), s=Math.sin(P.yaw);          // velocity/spin back into driving variables
+    P.speed=-s*P.vx-c*P.vz; P.lat=c*P.vx-s*P.vz; P.w=-P.om-P.kin; }
+  for(const k of traffic){
+    if(k.mode==='chase'||k.mode==='bust'){ const c=Math.cos(k.yaw), s=Math.sin(k.yaw); k.speed=-s*k.vx-c*k.vz; k.lat=c*k.vx-s*k.vz; k.w=-k.om-k.kin; k.v=k.speed; }   // free-driving police car: same readback as the player
+    else { k.lv=k.vx; k.v=k.vz*k.dirZ; } }
+  return hit; }
+function walkerPush(){                                              // the pedestrian: a circle pushed out of everything solid
+  const wz=world.position.z, push=(cx,cz,r)=>{ const dx=W.x-cx, dz=W.z-cz, d=Math.hypot(dx,dz), pen=.35+r-d; if(pen>0&&d>1e-4){ W.x+=dx/d*pen; W.z+=dz/d*pen; } };
+  for(const t of trees) if(Math.abs(t.z+wz-W.z)<4) push(t.x,t.z+wz,t.r);
+  push(podSolid.x,podSolid.z,podSolid.r); for(const t of extra) if(Math.abs(t.z-W.z)<4) push(t.x,t.z,t.r);
+  for(const b of ALL){ if(Math.abs(b.x-W.x)>4||Math.abs(b.z-W.z)>4) continue; const h=circleObb(b,W.x,W.z,.35); if(h){ W.x-=h.n[0]*h.pen; W.z-=h.n[1]*h.pen; } } }
+function thud(v){ if(!ac||!soundOn) return; const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain(); o.type='sine';
+  o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(40,t+.25); g.gain.setValueAtTime(Math.min(.6,.1+v*.03),t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+.35); }
+
+
+/* ---------- 12b. MECHANICS: traffic AI, lane changes, signals, speed cameras, highway police ---------- */
+function fine(n,why){ GAME.fines+=n; msg(why+'  -  fine ₹'+n); }
+function laneFree(k,nx){                                            // is the neighbouring lane clear of traffic AND of you? (look further back if someone is faster than us)
+  const clear=(x,z,v)=>{ if(Math.abs(x-nx)>2.8) return true; const rel=(z-k.z)*k.dirZ; return !(rel>-(14+Math.max(0,v-k.v)*1.5)&&rel<24+Math.max(0,k.v-v)*1.2); };
+  for(const j of traffic){ if(j===k||j.dirZ!==k.dirZ) continue;
+    const tx=j.pending?j.side*LANE[j.li+j.pending]:j.lane;                                             // a car that has signalled has already "claimed" its target lane
+    if(!clear(j.x,j.z,j.v)||!clear(tx,j.z,j.v)) return false; }
+  return clear(P.x,P.z,Math.max(0,P.vz*k.dirZ)); }
+function spotFree(k,z){ for(const j of traffic) if(j!==k&&Math.abs(j.x-k.x)<2.6&&Math.abs(j.z-z)<10) return false; return true; }
+function wrapCar(k,ref){                                            // loop a car that left the 760 m window back in at the other end, but never on top of another car
+  let z=k.z; if(z-ref.z>380) z-=760; else if(z-ref.z<-380) z+=760; else return;
+  for(let i=0;i<12&&!spotFree(k,z);i++) z-=k.dirZ*12; k.z=z; }
+function trafficDrive(k,dt,el){                                     // one AI driver: obey lights -> keep distance -> maybe change lane -> glide to lane centre
+  const dz=k.dirZ; let tgt=k.cruise;
+  if(GAME.sig!=='G') for(const g of gantries){                      // red light (or a yellow we can still stop for): brake so the nose stops on the line
+    const stopZ=g.position.z-5*dz, d=(stopZ-(k.z+dz*2.2))*dz;
+    if(d>-.5&&d<110&&(GAME.sig==='R'||d>k.v*k.v/9+4)) tgt=Math.min(tgt,Math.sqrt(2*4.5*Math.max(d-1.2,0))); }
+  let gap=1e9, lv=0;                                                // the car in front (another car, or YOU) sets our speed limit
+  for(const j of traffic){ if(j===k||j.dirZ!==dz||Math.abs(j.x-k.x)>2.5) continue; const g=(j.z-k.z)*dz-4.4; if(g>-4.4&&g<gap){ gap=g; lv=j.v; } }          // g>-4.4: even a car we are overlapping counts as 'in front' -> the rear one brakes and they separate
+  { const g=(P.z-k.z)*dz-4.4; if(Math.abs(P.x-k.x)<2.5&&g>-4.4&&g<gap){ gap=g; lv=Math.max(0,P.vz*dz); } }
+  if(gap<70) tgt=Math.min(tgt,Math.max(0,lv+(gap-7)*.7));
+  k.v=Math.max(0,k.v+MU.clamp(tgt-k.v,-9*dt,3.2*dt)); k.z+=dz*k.v*dt;                // gentle acceleration, firm braking
+  k.lcT-=dt; if(gap<40&&lv<k.cruise-2) k.lcT=Math.min(k.lcT,.4);   // stuck behind a slow car -> overtake soon
+  if(!k.pending&&k.lcT<=0&&k.v>9){ k.lcT=MU.randFloat(7,16);        // time to consider a lane change: pick left or right, but only if that lane is free
+    const o=[-1,1].filter(d=>k.li+d>=0&&k.li+d<4), d=o[Math.floor(Math.random()*o.length)];
+    if(d&&laneFree(k,k.side*LANE[k.li+d])){ k.pending=d; k.sigT=1.6; k.sigR=((k.side*(LANE[k.li+d]-LANE[k.li]))>0)===(dz<0); } }   // indicate for 1.6 s first
+  const sg=k.mesh.userData.sig;
+  if(k.pending){ k.sigT-=dt; if(sg) (k.sigR?sg.R:sg.L).color.setHex(Math.floor(el*3)%2===0?0xffa000:0x5a3a00);       // blink the indicator on the side we are moving to
+    if(k.sigT<=0){ const nx=k.side*LANE[k.li+k.pending]; if(laneFree(k,nx)){ k.li+=k.pending; k.lane=nx; k.cruise=LCR[k.li]+k.cr; }   // re-check, then go
+      k.pending=0; if(sg){ sg.L.color.setHex(0x5a3a00); sg.R.color.setHex(0x5a3a00); } } }
+  const want=k.lane+Math.sin(el*.35+k.ph)*.3, ox=k.x;                // glide to the lane centre at <=1.6 m/s sideways + a tiny wander
+  k.x+=k.lv*dt+MU.clamp((want-k.x)*3,-1.6,1.6)*dt; k.lv*=Math.exp(-3*dt);
+  k.yaw=k.base+dz*Math.atan2((k.x-ox)/Math.max(dt,.001)-k.lv,Math.max(k.v,3));   // nose points the way the car is drifting sideways
+  k.vx=k.lv; k.vz=dz*k.v; k.om=0; }
+function copDrive(k,dt){                                            // a police car that is free-driving (chasing, or stopped after a bust)
+  if(k.mode==='chase'){
+    const dist=Math.hypot(P.x-k.x,P.z-k.z), L=Math.min(dist/Math.max(k.speed,8),1.5)*.5, ax=P.x+P.vx*L-k.x, az=P.z+P.vz*L-k.z;   // aim a little ahead of where YOU are heading
+    const w=Math.atan2(-ax,-az), e=Math.atan2(Math.sin(w-k.yaw),Math.cos(w-k.yaw)), pv=Math.abs(P.speed);
+    let tg=Math.min(48,pv+MU.clamp((dist-15)*.35,-8,26)); if(dist<30) tg=Math.min(tg,pv*.97+2); if(pv<1.5) tg=MU.clamp((dist-7)*.6,0,12);   // you have stopped: roll up to ~7 m behind you (inside the 14 m bust radius)   // cops top out at 48 m/s (173 km/h): you can outrun them
+    k.speed+=MU.clamp(tg-k.speed,-14*dt,7*dt);
+    k.steer=MU.clamp(e*1.6,-1,1)*Math.atan(Math.min(.62,27/(k.speed*k.speed+1))); }                // same grip-limited steering as the player
+  else { k.speed+=MU.clamp(-k.speed,-10*dt,0); k.steer*=.9; }
+  k.lat-=k.lat*Math.min(1,6*dt); k.w*=Math.exp(-3*dt); k.kin=k.speed/2.7*Math.tan(k.steer);
+  const c=Math.cos(k.yaw), s=Math.sin(k.yaw);
+  k.vx=-s*k.speed+c*k.lat; k.vz=-c*k.speed-s*k.lat; k.x+=k.vx*dt; k.z+=k.vz*dt; k.yaw+=(k.kin+k.w)*dt; k.om=-(k.kin+k.w); k.v=k.speed; }
+function copReset(k){                                               // send a cop back to normal patrol, out of sight ahead or behind
+  const i=cops.indexOf(k); k.mode='patrol'; k.invM=1/1500; k.invI=0; k.side=-1; k.li=1+i; k.lane=k.x=-LANE[k.li]; k.yaw=k.base=0; k.dirZ=-1; k.cruise=24-i*2; k.v=k.cruise; k.lv=0; k.pending=0;
+  let z=P.z+(Math.random()<.5?-1:1)*(280+Math.random()*60); for(let n=0;n<12&&!spotFree(k,z);n++) z-=k.dirZ*12; k.z=z; k.seeT=k.stopT=k.farT=0; }
+function startChase(k){ k.mode='chase'; k.speed=k.v; k.lat=0; k.w=0; k.kin=0; k.steer=0; k.invM=1/1700; k.invI=1/2900; k.stopT=k.farT=0; msg('POLICE! Slow down and stop, or outrun them'); UI.lastK=-1; }
+function dispatchCop(){                                             // a speed camera radios the nearest free patrol car; it appears 160 m behind you
+  const k=cops.find(c=>c.mode==='patrol'); if(!k) return;
+  k.x=MU.clamp(P.x+Math.sin(P.yaw)*160,-15,-3.3); k.z=P.z+Math.cos(P.yaw)*160; k.yaw=P.yaw; k.v=Math.max(30,Math.abs(P.speed)); startChase(k); }
+function updateChase(dt){
+  const kmh=Math.abs(P.speed)*3.6; let near=1e9;
+  for(const k of cops){
+    const d=Math.hypot(P.x-k.x,P.z-k.z);
+    if(k.mode==='patrol'){                                          // a patrol car that sees you above the limit for 1.2 s starts a chase
+      if(mode==='drive'&&kmh>GAME.limit&&P.x<-1.5&&d<130) k.seeT+=dt; else k.seeT=Math.max(0,k.seeT-dt); if(k.seeT>1.2) startChase(k); }
+    else if(k.mode==='chase'){ near=Math.min(near,d);
+      if(d<14&&Math.abs(P.speed)<1.5) k.stopT+=dt; else k.stopT=0;                                      // you stopped with the cop alongside -> busted
+      if(k.stopT>2.5){ fine(1500,'BUSTED'); k.mode='bust'; k.bustT=4; UI.lastK=-1; }
+      if(d>380) k.farT+=dt; else k.farT=0; if(k.farT>8){ msg('You lost the police!'); copReset(k); UI.lastK=-1; } }   // 380 m away for 8 s = escaped
+    else if(k.mode==='bust'){ k.bustT-=dt; if(k.bustT<=0){ copReset(k); UI.lastK=-1; } } }
+  GAME.chase=cops.some(c=>c.mode==='chase'||c.mode==='bust'); GAME.cd=near; }
+function checkEnforcement(){                                        // did we just drive across a camera or a red light's stop line?
+  if(mode!=='drive'){ GAME.pz=P.z; return; }
+  const kmh=Math.abs(P.speed)*3.6;
+  for(const c of cams){ const z=c.position.z; if(GAME.pz>z&&P.z<=z&&P.x<-1.5&&kmh>GAME.limit){
+    GAME.flash=1; const f=c.userData.flash; f.color.setHex(0xffffff); setTimeout(()=>f.color.setHex(0x333333),250);
+    fine(500+Math.round((kmh-GAME.limit)*10),'SPEED CAMERA '+Math.round(kmh)+' km/h'); dispatchCop(); } }
+  for(const g of gantries){ const z=g.position.z+5; if(GAME.pz>z&&P.z<=z&&GAME.sig==='R'&&kmh>8&&P.x<-1.5) fine(1000,'RED LIGHT RUN'); }
+  GAME.pz=P.z; }
+
+// Speed-camera flash: a white quad glued to the camera (so it shows in VR too, where the page's HTML can't be seen); the loop fades it out.
+const flashQ=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthTest:false,depthWrite:false,fog:false,toneMapped:false}));
+flashQ.position.z=-.3; flashQ.renderOrder=999; flashQ.visible=false; camera.add(flashQ);
+
+/* ---------- 13. MAIN LOOP ---------- */
+const clock=new THREE.Clock();
+renderer.setAnimationLoop(()=>{
+  const dt=Math.min(clock.getDelta(),.05); inXR=renderer.xr.isPresenting; pollXR();
+  const boost=!!(keys.ShiftLeft||keys.ShiftRight);
+  let ix=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0), iz=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+  if(inXR){ ix=vx; iz=-vy; }
+  if(mode==='drive'){                                              // driving: "bicycle model" + tyre grip
+    if(seat!==0){ ix=0; iz=0; }                                      // arrow keys / stick only drive from seat 1
+    const v=Math.abs(P.speed), maxS=Math.atan(Math.min(.62,27/(v*v+1)));    // at speed the wheels may only turn a few degrees: keeps cornering force near what tyres can hold (~1 g)
+    P.stIn+=(ix-P.stIn)*Math.min(1,dt*6); P.steer=-P.stIn*maxS;
+    const acc=Math.max(iz,0), brk=Math.max(-iz,0), gr=DS.gear;                                // accelerator / brake pedals; the GEAR decides what they do
+    if(gr==='D') P.speed+=7*Math.max(0,1-Math.pow(P.speed/60,2))*(boost?1.35:1)*acc*dt;   // strong at low speed, tapering off towards ~185 km/h else if(gr==='R') P.speed-=3.5*acc*dt; else if(acc>0&&gr==='P'&&msgT<=0) msg('In Park: press D on the console to drive');
+    if(brk>0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),13*brk*dt);             // brake: slows to a stop, never reverses the car
+    if(gr==='P') P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),30*dt);              // Park: the wheels are locked
+    P.speed-=P.speed*.02*dt+Math.sign(P.speed)*Math.min(Math.abs(P.speed),.8*dt);           // drag + rolling resistance
+    if(keys.Space&&seat===0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),16*dt);   // handbrake
+    else if(seat!==0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),5*dt);          // nobody driving: coast to a stop
+    P.speed=MU.clamp(P.speed,-6,VMAX);                                                         // 185 km/h
+    if(Math.abs(P.x)<1.5){ P.speed-=P.speed*.5*dt; shake=Math.max(shake,Math.min(.05,Math.abs(P.speed)*.002)); }   // rough median strip: drags and shakes
+    else if(Math.abs(P.x)>18.2) P.speed-=P.speed*.25*dt;                                      // grass beyond the shoulder
+    P.lat-=P.lat*Math.min(1,(keys.Space?1.2:6)*dt); P.w*=Math.exp(-3*dt);                   // tyres grip sideways slides; spin dies out
+    P.kin=P.speed/2.7*Math.tan(P.steer);                                                    // steering yaw rate = v/wheelbase*tan(steer)
+  } else {                                                          // walking, relative to where the head faces
+    P.speed=P.lat=P.w=P.kin=0;
+    camera.getWorldDirection(dirV); dirV.y=0; dirV.normalize();
+    const sp=(boost?4.5:1.8)*dt; W.x+=(dirV.x*iz-dirV.z*ix)*sp; W.z+=(dirV.z*iz+dirV.x*ix)*sp; }
+  { const c=Math.cos(P.yaw), s=Math.sin(P.yaw);                     // integrate the SUV as a body with a velocity vector and spin
+    P.vx=-s*P.speed+c*P.lat; P.vz=-c*P.speed-s*P.lat; P.x+=P.vx*dt; P.z+=P.vz*dt; P.yaw+=(P.kin+P.w)*dt; P.om=-(P.kin+P.w); }
+  const ref=mode==='drive'?P:W;
+  const el=clock.elapsedTime;
+  { const sg=sigState(el); if(sg!==GAME.sig){ GAME.sig=sg; SIGL.R.color.setHex(sg==='R'?0xff2a1a:0x330606); SIGL.Y.color.setHex(sg==='Y'?0xffc21a:0x332a06); SIGL.G.color.setHex(sg==='G'?0x2cff6a:0x06260c); }
+    placeInfra(ref.z); updateChase(dt); checkEnforcement(); }
+  for(const k of traffic){ if(k.mode==='chase'||k.mode==='bust') copDrive(k,dt); else trafficDrive(k,dt,el); }     // every vehicle gets its AI/pursuit step
+  const hit=physics(); if(mode==='walk') walkerPush();
+  if(hit>1.5&&clock.elapsedTime>cd){ cd=clock.elapsedTime+.4; shake=Math.min(.35,hit*.03); msg('Impact '+Math.round(hit*3.6)+' km/h'); thud(hit); }
+  for(const k of traffic){
+    if(k.mode==='traffic'||k.mode==='patrol') wrapCar(k,ref);                 // loop: leave far ahead/behind, re-enter hidden by fog
+    if(Math.abs(k.z-ref.z)<150) for(const w of k.mesh.userData.wheels) w.rotation.x-=k.v/.36*dt;  // only spin wheels you can see
+    k.mesh.position.set(k.x,0,k.z); k.mesh.rotation.y=k.yaw;
+    if(k.cop){ const lb=k.mesh.userData.lb, on=(k.mode==='chase'||k.mode==='bust')?(Math.floor(el*6)%2?1:2):0;       // flashing red / blue light bar
+      if(lb.on!==on){ lb.on=on; lb.red.color.setHex(on===1?0xff2020:0x2a0606); lb.blue.color.setHex(on===2?0x2a7bff:0x060c24); } } }
+  if(GAME.flash>0){ GAME.flash=Math.max(0,GAME.flash-dt*2.5); flashQ.material.opacity=GAME.flash*.9; flashQ.visible=GAME.flash>.01; }   // camera flash fades out
+  setSiren(GAME.chase?MU.clamp(1-GAME.cd/450,0,1):0);
+  { const t='Limit '+GAME.limit+' km/h  ·  Fines ₹'+GAME.fines+'  ·  Signal '+{G:'GREEN',Y:'YELLOW',R:'RED'}[GAME.sig]+(GAME.chase?'  ·  POLICE CHASE'+(GAME.cd<1e8?' ('+Math.round(GAME.cd)+' m)':''):''); const gs=$('gstat'); if(gs.textContent!==t) gs.textContent=t; }
+  world.position.z=Math.round(ref.z/SNAP)*SNAP; far.position.set(ref.x,0,ref.z); clouds.rotation.y+=dt*.002;
+  sun.position.set(ref.x,0,ref.z).addScaledVector(sunDir,80); sun.target.position.set(ref.x,0,ref.z);
+  car.position.set(P.x,0,P.z); car.rotation.y=P.yaw; if(mode==='walk'||tp) for(const w of car.userData.wheels) w.rotation.x-=P.speed/.36*dt; cp.wheel.rotation.z=-P.stIn*3.1;
+  car.userData.shell.visible=mode==='walk'||tp; cp.trim.visible=!car.userData.shell.visible;   // inside trim only when the outside shell is hidden
+  av.visible=mode==='walk'&&tp; av.position.set(W.x,0,W.z);
+  // rig placement: desktop rig = eye height; VR rig stays at y=0 (the headset adds your real head height)
+  const eyeH=inXR?0:(mode==='drive'?1.2:1.6), c=Math.cos(P.yaw), s=Math.sin(P.yaw);
+  if(mode==='drive'&&(!tp||inXR)){ const S=SEATS[seat]; rig.position.set(P.x+S.x*c+S.z*s,eyeH,P.z-S.x*s+S.z*c); }  // the chosen seat
+  else if(mode==='drive') rig.position.set(P.x,1.2,P.z); else rig.position.set(W.x,eyeH,W.z);
+  rig.rotation.y=(mode==='drive'?P.yaw:0)+yaw;
+  if(!inXR){ camera.rotation.x=pitch; camera.position.set((Math.random()-.5)*shake,(Math.random()-.5)*shake,tp?(mode==='drive'?7.5:3):0); if(tp) camera.position.y+=.5; }
+  shake*=.9;
+  // inspection: get close to the dash model and it lifts + rotates; trigger/G pulls it to your face
+  camera.getWorldPosition(eye); const near=Math.hypot(eye.x-podBase.x,eye.z-podBase.z)<4.5;
+  podItem.rotation.y+=dt*(near||grabbed?.5:.1);
+  if(grabbed){ camera.getWorldDirection(tv); tv.multiplyScalar(.65).add(eye); tv.y-=.12; } else tv.copy(podBase).y+=near?.55:0;
+  podItem.position.lerp(tv,1-Math.exp(-dt*4)); podInner.scale.setScalar(MU.lerp(podInner.scale.x,grabbed?.22:.5,.1)); { const sc=podInner.scale.x; podInner.position.set(0,-.94*sc,.03*sc); } // keep it centred on its pivot
+  // ---- live dashboard: hover/tooltips, needle, hazard blink, screen refresh (canvases are redrawn only when needed) ----
+  { let hot=null;
+    if(!inXR){ aimDesktop(); hot=pickHot(); }
+    else for(const c of ctrls){ aimCtrl(c); const q=pickHot(); c.userData.laser.scale.z=q?q.h.distance:.8; if(q&&!hot) hot=q; }
+    for(const c of ctrls) c.userData.laser.visible=inXR;
+    setHover(hot?hot.o:null);
+    for(const o of UI.hot){ const u=o.userData; if(u.pt>0){ u.pt-=dt; if(!u.noScale) o.scale.setScalar(u.pt>0?.88:(o===UI.hover?1.12:1)); } }      // button "press" squash
+    const tgt=MU.degToRad(135-270*MU.clamp(Math.abs(P.speed)*3.6/220,0,1));                                                                     // 0..180 km/h sweeps 270 degrees clockwise
+    UI.needleA+=(tgt-UI.needleA)*Math.min(1,dt*6); if(UI.needle) UI.needle.rotation.z=UI.needleA;                                               // THE HAND follows the car's speed
+    const kmh=Math.round(Math.abs(P.speed)*3.6); UI.cT-=dt; if((kmh!==UI.lastK||GAME.chase)&&UI.cT<=0){ UI.lastK=kmh; UI.cT=GAME.chase?.3:.1; drawCluster(); }               // digital readout (10 Hz max)
+    if(DS.page==='nav'||DS.page==='home'){ UI.mT-=dt; if(UI.mT<=0){ UI.mT=DS.page==='nav'?.15:5; drawScreen(); } }                              // live map / clock
+    UI.bT=(UI.bT||0)-dt; if(DS.hazard&&UI.bT<=0){ UI.bT=.45; DS.blink=!DS.blink; applyLamps(); drawCluster(); if(DS.page!=='off') drawScreen(); tick(DS.blink?1000:760); } }   // hazards: ~65 flashes a minute
+  if(msgT>0) msgT-=dt;
+  $('hud').textContent=Math.round(Math.abs(P.speed)*3.6)+' km/h  ·  Gear '+DS.gear+'  ·  '+(mode==='drive'?SEATNAMES[seat]:'on foot')+(msgT>0?'  ·  '+$('hud').dataset.m:'');
+  renderer.render(scene,camera); });
+</script></body></html>
