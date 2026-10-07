@@ -26,7 +26,7 @@ canvas{display:block}
 <p>You start in the driver's seat of a compact SUV, parked on the shoulder. Click anywhere to begin (this also starts the music).</p></div>
 <div id="gstat" class="panel"></div><div id="cross"></div><div id="vr"></div><button id="snd">Sound: off (M)</button><div id="hud" class="panel">0 km/h</div>
 <div id="legend" class="panel"><b>Controls</b><br>W/S or ↑/↓ drive/walk · A/D or ←/→ steer/strafe · Shift faster<br>
-Mouse look (click to lock, or drag) · Scroll zoom · Space handbrake<br>1 driver · 2 front passenger · 3 rear left · 4 rear middle · 5 rear right (teleport)<br>Arrow keys drive from seat 1 (first press <b>D</b> on the console) · E get in/out · F first/third person<br>Limit 100 km/h: speed cameras flash + call the police, police chase you above it, traffic stops at red lights<br>Click dash controls with the crosshair (right-click / Shift = down · wheel over a knob adjusts) · M sound · G hold the dash model<br>
+Mouse look (click to lock, or drag) · Scroll zoom · Space handbrake<br>1 driver · 2 front passenger · 3 rear left · 4 rear middle · 5 rear right (teleport)<br>Arrow keys drive from seat 1 (first press <b>D</b> on the console) · E get in/out · F first/third person<br>In Reverse the BACK key is the accelerator · mirrors are live<br>Limit 100 km/h: speed cameras flash + call the police, police chase you above it, traffic stops at red lights<br>Click dash controls with the crosshair (right-click / Shift = down · wheel over a knob adjusts) · M sound · G hold the dash model<br>
 VR: left stick move/drive · right stick 30° turn · A/X sound · B/Y get in/out · stick-click next seat · point + trigger presses a control (grip = down) · trigger grabs dash model</div>
 <script type="module">
 import * as THREE from 'three';
@@ -171,7 +171,7 @@ function makeCockpit(full=true,live=true){                          // full=fals
   for(const s of [-1,1]){ K2.box(trim,.08,.8,.1,s*.87,1.265,-.7,.67);
     K2.box(trim,.07,.45,1.15,s*.9,.62,.08); K2.box(dash2,.08,.1,1.15,s*.9,.92,.08); K2.box(fab,.03,.14,.9,s*.855,.7,.12);
     K2.box(chrome,.025,.03,.2,s*.85,.88,.2); K2.box(glow,.012,.01,.9,s*.862,.78,.1);
-    K2.box(blk,.1,.15,.2,s*1.0,1.02,-.55); K2.box(mir,.005,.12,.17,s*.948,1.02,-.55); }
+    }
   K2.box(blk,.03,.06,.15,.85,.82,.35);                               // driver window switches
   if(full){
     for(const s of [-1,1]){ K2.box(trim,.07,.9,.1,s*.9,1.1,.62);     // B-pillars
@@ -183,7 +183,7 @@ function makeCockpit(full=true,live=true){                          // full=fals
     K2.box(glass,1.16,.012,1.55,0,1.605,.5125); K2.box(blk,1.2,.04,.03,0,1.6,-.27); K2.box(blk,1.2,.04,.03,0,1.6,1.3);  // PANORAMIC SUNROOF
     K2.box(trim,.3,.045,.15,0,1.575,-.5); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.5); K2.box(blk,.025,.006,.02,s*.05,1.552,-.46); }
     K2.cyl(red,.013,.008,0,1.552,-.46); K2.box(blk,.13,.05,.07,0,1.52,-.57);                        // overhead console: SOS button, map lights, camera
-    K2.box(blk,.02,.12,.02,0,1.49,-.6); K2.box(blk,.27,.075,.03,0,1.4,-.6); K2.box(mir,.25,.06,.005,0,1.4,-.583);  // rear-view mirror
+    
   }
   K2.done();
   K.done();
@@ -219,14 +219,22 @@ function setPage(p){ DS.page=p; drawScreen(); }
 function adjT(k,d){ DS.cl['t'+k]=MU.clamp(DS.cl['t'+k]+d,16,30); uiSync(); }
 function adjF(d){ DS.cl.fan=MU.clamp(DS.cl.fan+d,0,7); uiSync(); }
 function adjS(kind,k,d){ const key=kind+k; DS.cl[key]=(DS.cl[key]+d+4)%4; uiSync(); }                 // 0 off,1,2,3 (wraps)
+// PEDALS. In D (and N) the forward key/stick is the accelerator and the back key brakes. In R it flips: the BACK key/stick is the
+// accelerator (it reverses the car) and the forward key brakes. In P and N nothing accelerates the car.
+function applyPedals(iz,boost,dt){
+  const gr=DS.gear, acc=gr==='R'?Math.max(-iz,0):Math.max(iz,0), brk=gr==='R'?Math.max(iz,0):Math.max(-iz,0);
+  if(gr==='D') P.speed+=7*Math.max(0,1-Math.pow(P.speed/60,2))*(boost?1.35:1)*acc*dt;       // strong at low speed, tapering off towards ~185 km/h
+  else if(gr==='R') P.speed-=3.5*acc*dt;                                                      // reverse: gentle (the speed clamp below stops it at about 22 km/h)
+  else if(gr==='P'&&iz!==0&&msgT<=0) msg('In Park: press D (or R) on the console first');
+  if(brk>0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),13*brk*dt); }             // brake: slows to a stop, never reverses the car
 function setGear(g){ if(seat!==0) return msg('Gear selector: driver seat only');
   if(g===DS.gear) return; if(g!=='N'&&Math.abs(P.speed)>2) return msg('Stop the car before selecting '+g);
   DS.gear=g; syncGear(); msg('Gear: '+g); }
 function toggleHazard(){ DS.hazard=!DS.hazard; DS.blink=DS.hazard; applyLamps(); drawCluster(); drawScreen(); }
 function applyLamps(){ const L=car.userData.lamps, on=DS.hazard&&DS.blink;                              // tail lights + indicators blink together
-  L.tail.color.setHex(on?0xff2626:0x6a1010); L.amber.color.setHex(on?0xffa200:0x5a3a00);
+  L.tail.color.setHex(on?0xff2626:0x6a1010); L.amber.color.setHex(on?0xffa200:0x5a3a00); if(L.rev) L.rev.color.setHex(DS.gear==='R'?0xffffff:0x303030);
   if(UI.hazMat) UI.hazMat.color.setHex(DS.hazard?(DS.blink?0xff3b2a:0x802018):0xb02010); }
-function syncGear(){ if(!UI.lever) return; GEARS.forEach(G=>UI.gb[G].color.setHex(G===DS.gear?0x2f6fbf:0x1c1d20)); drawCluster(); drawScreen(); }
+function syncGear(){ applyLamps(); if(!UI.lever) return; GEARS.forEach(G=>UI.gb[G].color.setHex(G===DS.gear?0x2f6fbf:0x1c1d20)); drawCluster(); drawScreen(); }
 function uiSync(){ drawScreen(); drawLcd(); const c=DS.cl, K=UI.kn; if(!K) return;
   K.P.rotation.z=-MU.degToRad(-135+270*(c.tP-16)/14); K.D.rotation.z=-MU.degToRad(-135+270*(c.tD-16)/14); K.F.rotation.z=-MU.degToRad(-135+270*c.fan/7);
   const heat=[0x2a2a2a,0x8a3a00,0xd85a00,0xff7a1a], vent=[0x2a2a2a,0x1a4a7a,0x2a82d0,0x4fb8ff];
@@ -359,11 +367,26 @@ function buildWheel(side){
   return mergeGeometries([tyre,disc,mergeGeometries(sp)],true).rotateY(side*Math.PI/2);   // groups -> 3 materials; turn the face outward
 }
 const WG={'1':buildWheel(1),'-1':buildWheel(-1)};
+// MIRROR SHAPES: glass is a rounded-corner rectangle (not a sharp box) and the housing is a soft rounded shell, like the Seltos' mirror caps.
+const MIRG=M(0x3b4750,.15,.9);                                       // dark, glossy "mirror glass" for mirrors that are not live
+function roundedGlass(w,h,r){                                        // a flat rounded rectangle whose UVs run 0..1 (so a camera image maps onto it exactly)
+  const sh=new THREE.Shape(), x=-w/2, y=-h/2;
+  sh.moveTo(x+r,y); sh.lineTo(x+w-r,y); sh.quadraticCurveTo(x+w,y,x+w,y+r); sh.lineTo(x+w,y+h-r); sh.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  sh.lineTo(x+r,y+h); sh.quadraticCurveTo(x,y+h,x,y+h-r); sh.lineTo(x,y+r); sh.quadraticCurveTo(x,y,x+r,y);
+  const g=new THREE.ShapeGeometry(sh,6), p=g.attributes.position, uv=g.attributes.uv;
+  for(let i=0;i<p.count;i++) uv.setXY(i,(p.getX(i)+w/2)/w,(p.getY(i)+h/2)/h);
+  return g; }
+function staticMirror(K,sx){                                         // a simple wing mirror merged into the car's meshes (free to draw)
+  const yaw=-sx*.3, sn=Math.sin(yaw), cs=Math.cos(yaw), x=sx*1.03, y=1.1, z=-.62;           // faces backwards and a little inboard
+  K.geo(new RoundedBoxGeometry(.21,.15,.09,3,.025),BLK,x-.045*sn,y,z-.045*cs,0,yaw,0);        // housing shell (sits just behind the glass)
+  K.geo(roundedGlass(.15,.095,.02),MIRG,x+.0015*sn,y,z+.0015*cs,0,yaw,0);                     // glass
+  K.box(BLK,.1,.045,.07,sx*.955,1.06,-.56); }                                                   // stalk joining the mirror to the door
 function makeCar(color,player=false,signal=false){
   const car=new THREE.Group(), shell=new THREE.Group(); car.add(shell); car.userData.shell=shell;
   const K=builder(shell), paint=M(color,.3,.15);
   const tl=player?basic(0x6a1010):TAILL, am=player?basic(0x5a3a00):AMB;   // the player's lamp materials are private so only OUR car blinks
   car.userData.lamps={tail:tl,amber:am};
+  const revM=player?basic(0x303030):null; if(player) car.userData.lamps.rev=revM;           // white reverse lamps (player only)
   const amL=signal?basic(0x5a3a00):am, amR=signal?basic(0x5a3a00):am; if(signal) car.userData.sig={L:amL,R:amR};   // traffic cars get left/right indicators that can blink on their own
   const R=(mat,w,h,d,x,y,z,r=.1,seg=3)=>K.geo(new RoundedBoxGeometry(w,h,d,seg,r),mat,x,y,z);   // rounded panel
   // --- body: soft main volume, raised hood, black lower cladding + bumpers, black two-tone roof ---
@@ -374,7 +397,7 @@ function makeCar(color,player=false,signal=false){
   K.box(GLS,1.5,.71,.03,0,1.36,-.74,.745); K.box(GLS,1.45,.52,.03,0,1.36,1.885,-.25);
   for(const sx of [-1,1]){ K.box(GLS,.03,.5,2.3,sx*.8,1.36,.62,0,0,sx*.12);
     K.box(BLK,.05,.8,.07,sx*.78,1.36,-.74,.745); K.box(BLK,.03,.52,.1,sx*.83,1.36,.58); K.box(BLK,.05,.52,.16,sx*.82,1.36,1.84,0,0,sx*.12);   // A, B, C pillars
-    R(BLK,.1,.13,.2,sx*1.0,1.12,-.6,.04,2); K.box(GLS,.005,.1,.17,sx*.948,1.12,-.6); K.box(BLK,.1,.03,.05,sx*.94,1.08,-.6);   // wing mirrors
+    if(!player) staticMirror(K,sx);                                // traffic + police get a simple (non-live) wing mirror; the player's are the live ones built in section 12c
     K.cyl(SIL,.018,2.2,sx*.74,1.72,.6,Math.PI/2);                                                                                                // roof rails
     K.box(SIL,.03,.07,1.6,sx*.94,.5,.25);                                                                                                       // silver side sill
     for(const z of [.12,1.2]) K.box(SIL,.015,.025,.14,sx*.915,1.04,z); }                                                                        // door handles
@@ -388,7 +411,7 @@ function makeCar(color,player=false,signal=false){
   // --- REAR (image 1): full-width red light bar joining two tall corner lamps, Kia badge, black bumper with silver trim ---
   K.box(tl,1.5,.03,.02,0,1.06,2.205); K.box(SIL,.15,.04,.012,0,.98,2.208);
   for(const sx of [-1,1]){ K.box(BLK,.13,.42,.03,sx*.78,.92,2.205); K.box(tl,.06,.34,.03,sx*.79,.92,2.21);
-    K.box(tl,.04,.2,.02,sx*.78,.6,2.24); }
+    K.box(tl,.04,.2,.02,sx*.78,.6,2.24); if(player) K.box(revM,.14,.05,.02,sx*.42,.66,2.24); }
   K.box(SIL,1.1,.04,.06,0,.46,2.235); K.box(SIL,.26,.05,.012,0,.7,2.236);
   for(const sx of [-1,1]){ const a=sx<0?amL:amR; K.box(a,.14,.035,.02,sx*.76,.745,-2.235); K.box(a,.07,.05,.02,sx*.79,.73,2.235); K.box(a,.012,.03,.09,sx*.915,.98,-1.75); }   // turn indicators: front, rear, side repeaters
   // --- wheels: arch cladding ring + dark arch opening behind each wheel; the wheel sits in a pivot so it can roll ---
@@ -726,6 +749,45 @@ function checkEnforcement(){                                        // did we ju
 const flashQ=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthTest:false,depthWrite:false,fog:false,toneMapped:false}));
 flashQ.position.z=-.3; flashQ.renderOrder=999; flashQ.visible=false; camera.add(flashQ);
 
+/* ---------- 12c. WORKING MIRRORS ---------- */
+// A mirror shows the world as seen FROM the mirror, looking backwards. Each mirror owns a hidden camera + a small RENDER TARGET (an off-screen
+// texture). We draw the scene into that texture and show it on the glass, flipped left-right (a mirror image).
+// LAW OF REFLECTION: a real mirror is angled so that the driver's line of sight bounces off it and ends up looking down the road behind the car.
+// The glass normal therefore points halfway between "back to the driver's eye" and "the direction we want to see": n = normalize(look - d),
+// where d = direction from the eye to the mirror. That is why real wing mirrors are turned to face rearwards, not straight sideways.
+// Light for a Quest 2: tiny textures; ONE mirror refreshed per frame (round-robin); only mirrors you are looking toward; our own car hidden while drawing.
+const MIRRORS=[], mvv=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()], EYE=new THREE.Vector3(.37,1.2,.3); let mirrorI=0;
+const STALK=new THREE.BoxGeometry(.1,.045,.07);
+function addMirror(parent,pos,look,rw,rh,fov,gw,gh,sw,sh,sd,sr){
+  const r=look.clone().normalize(), d=pos.clone().sub(EYE).normalize(), n=r.clone().sub(d).normalize();
+  const g=new THREE.Group(); g.position.copy(pos); g.rotation.set(-Math.asin(n.y),Math.atan2(n.x,n.z),0,'YXZ'); parent.add(g);                      // turn the whole mirror to face along n
+  const shell=new THREE.Mesh(new RoundedBoxGeometry(sw,sh,sd,4,sr),BLK); shell.position.z=-sd/2; g.add(shell);                                        // rounded housing behind the glass
+  const rt=new THREE.WebGLRenderTarget(rw,rh,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,generateMipmaps:false,samples:2});
+  rt.texture.repeat.set(-1,1); rt.texture.offset.set(1,0);                                                                                           // flip horizontally = mirror image
+  const live=new THREE.MeshBasicMaterial({map:rt.texture}), glass=new THREE.Mesh(roundedGlass(gw,gh,Math.min(gh*.22,.02)),MIRG); glass.position.z=.0015; g.add(glass);
+  const cam=new THREE.PerspectiveCamera(fov,gw/gh,.3,260); cam.position.copy(pos).addScaledVector(n,.04); cam.rotation.set(Math.asin(r.y),Math.atan2(-r.x,-r.z),0,'YXZ'); car.add(cam);   // looks along the reflected ray
+  MIRRORS.push({cam,rt,glass,live,n,r,g}); return g; }
+const V3=(x,y,z)=>new THREE.Vector3(x,y,z);
+addMirror(cp.trim,V3(0,1.4,-.6),V3(0,-.03,1),416,80,12,.255,.046,.30,.085,.045,.018);                                   // rear-view mirror (inside, first-person only)
+for(const s of [-1,1]){                                                                                                    // wing mirrors: outside the door, visible from outside too
+  addMirror(car,V3(s*1.03,1.1,-.62),V3(s*.14,-.03,.99),224,142,26,.15,.095,.21,.15,.09,.025);
+  const st=new THREE.Mesh(STALK,BLK); st.position.set(s*.955,1.06,-.56); car.add(st); }                                    // stalk joining each mirror to the door
+function renderMirror(m){
+  m.cam.updateWorldMatrix(true,false);
+  const prev=renderer.getRenderTarget(), xr=renderer.xr.enabled, sh=renderer.shadowMap.autoUpdate;
+  renderer.xr.enabled=false; renderer.shadowMap.autoUpdate=false;                                       // plain camera, and reuse the existing shadow map
+  car.visible=false; rig.visible=false;                                                                  // hide our car (and the mirror glass itself), controllers and the flash quad
+  renderer.setRenderTarget(m.rt); renderer.render(scene,m.cam); renderer.setRenderTarget(prev);
+  car.visible=true; rig.visible=true; renderer.xr.enabled=xr; renderer.shadowMap.autoUpdate=sh; }
+function updateMirrors(){
+  const fp=mode==='drive'&&cp.trim.visible;                                                              // live view only from inside the car; otherwise plain dark glass
+  for(const m of MIRRORS) m.glass.material=fp?m.live:MIRG;
+  if(!fp) return;
+  camera.getWorldPosition(mvv[0]); camera.getWorldDirection(mvv[1]);
+  for(let n=0;n<MIRRORS.length;n++){ const i=(mirrorI+n)%MIRRORS.length, m=MIRRORS[i];
+    m.glass.getWorldPosition(mvv[2]).sub(mvv[0]).normalize(); if(mvv[2].dot(mvv[1])<.3) continue;       // not looking anywhere near this mirror: skip it
+    mirrorI=(i+1)%MIRRORS.length; renderMirror(m); return; } }
+
 /* ---------- 13. MAIN LOOP ---------- */
 const clock=new THREE.Clock();
 renderer.setAnimationLoop(()=>{
@@ -737,9 +799,8 @@ renderer.setAnimationLoop(()=>{
     if(seat!==0){ ix=0; iz=0; }                                      // arrow keys / stick only drive from seat 1
     const v=Math.abs(P.speed), maxS=Math.atan(Math.min(.62,27/(v*v+1)));    // at speed the wheels may only turn a few degrees: keeps cornering force near what tyres can hold (~1 g)
     P.stIn+=(ix-P.stIn)*Math.min(1,dt*6); P.steer=-P.stIn*maxS;
-    const acc=Math.max(iz,0), brk=Math.max(-iz,0), gr=DS.gear;                                // accelerator / brake pedals; the GEAR decides what they do
-    if(gr==='D') P.speed+=7*Math.max(0,1-Math.pow(P.speed/60,2))*(boost?1.35:1)*acc*dt;   // strong at low speed, tapering off towards ~185 km/h else if(gr==='R') P.speed-=3.5*acc*dt; else if(acc>0&&gr==='P'&&msgT<=0) msg('In Park: press D on the console to drive');
-    if(brk>0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),13*brk*dt);             // brake: slows to a stop, never reverses the car
+    const gr=DS.gear; applyPedals(iz,boost,dt);                                              // accelerator + brake, interpreted by the selected gear
+    if(gr==='R'&&P.speed<-.3){ UI.rb=(UI.rb||0)-dt; if(UI.rb<=0){ UI.rb=.7; tick(1100); } }       // reversing beep
     if(gr==='P') P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),30*dt);              // Park: the wheels are locked
     P.speed-=P.speed*.02*dt+Math.sign(P.speed)*Math.min(Math.abs(P.speed),.8*dt);           // drag + rolling resistance
     if(keys.Space&&seat===0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),16*dt);   // handbrake
@@ -802,5 +863,6 @@ renderer.setAnimationLoop(()=>{
     UI.bT=(UI.bT||0)-dt; if(DS.hazard&&UI.bT<=0){ UI.bT=.45; DS.blink=!DS.blink; applyLamps(); drawCluster(); if(DS.page!=='off') drawScreen(); tick(DS.blink?1000:760); } }   // hazards: ~65 flashes a minute
   if(msgT>0) msgT-=dt;
   $('hud').textContent=Math.round(Math.abs(P.speed)*3.6)+' km/h  ·  Gear '+DS.gear+'  ·  '+(mode==='drive'?SEATNAMES[seat]:'on foot')+(msgT>0?'  ·  '+$('hud').dataset.m:'');
+  updateMirrors();
   renderer.render(scene,camera); });
 </script></body></html>
