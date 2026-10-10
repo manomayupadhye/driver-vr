@@ -4,7 +4,7 @@ Drive (or walk) along a hazy 8-lane Indian highway in a compact SUV with a fully
 
 Everything lives in **one self-contained `index.html`**: markup, CSS and JavaScript. There is no build step, no image files and no audio files. The graphics are built from Three.js geometry, the screens are drawn at run time on canvases, and the music is synthesised live with the Web Audio API.
 
-> **Live demo:** `https://manomayupadhye.github.io/driver-vr/`
+> **Live demo:** `https://YOURNAME.github.io/REPONAME/`
 > *(Open it in a desktop browser, or in the Meta Quest Browser and press **Enter VR**.)*
 
 <!-- Add a screenshot or GIF here:  ![screenshot](screenshot.png) -->
@@ -27,7 +27,8 @@ Everything lives in **one self-contained `index.html`**: markup, CSS and JavaScr
 - Screen and climate controls work from both front seats. The gear selector only works from the driver seat.
 
 **World and traffic**
-- 8 lanes with a median, dashed lane lines, roadside trees, distant hazy hills and thin clouds.
+- An 8-lane highway that **winds through real bends**: it starts straight, then curves gently left and right (tightest bend about 385 m radius), so you have to steer. Dashed lane lines, a kerbed median and roadside trees all follow the curve.
+- A proper landscape: a flat plain beside the road, rolling hills, foothills with **pine forest**, and three layers of **distant mountains** fading into winter haze. Thin clouds and a low morning sun.
 - Traffic keeps its distance, signals before changing lane (blinking indicator), and slows for slower cars ahead.
 - **Traffic signals** every 400 m: traffic stops on the line at red. Running a red costs a fine.
 - **Speed cameras** every 700 m with a flash. Over the limit means a fine and police dispatched behind you.
@@ -105,8 +106,9 @@ Everything is in `index.html`, in numbered, commented sections, so you can read 
 | Section | What it does |
 |---|---|
 | 1 | Renderer, camera rig, fog (ACES tone mapping, soft shadows, `local-floor` for VR) |
-| 2 to 4 | Helpers, sky, sun, hills, clouds, and the road |
-| 5 | **Tree factory**: one function builds a tree, called in a loop to place many |
+| 2 to 3 | Helpers, sky, sun and clouds |
+| 4 | **The curved road**: the centre-line maths (`roadAt`, `worldToRoad`) and the road surface ribbons |
+| 5 | Terrain, pine forest, backdrop mountains, and the **instanced roadside trees** |
 | 6 | **Cabin factory** and the live dashboard (canvas-texture screens, knobs, buttons) |
 | 7 | **Car factory** (exterior, wheels, lights) and the police variant |
 | 8 | The player's car, traffic, inspection pedestal, and the pooled signals and cameras |
@@ -117,7 +119,10 @@ Everything is in `index.html`, in numbered, commented sections, so you can read 
 | 13 | The main loop |
 
 **Ideas worth reading in the source**
-- **Factory pattern.** Build an object once in a function, then place it many times with a loop.
+- **Factory pattern.** Build an object once in a function, then place it many times with a loop (cars, signals, cameras, the cabin).
+- **Road space vs world space.** The road is described by two numbers, *s* (distance along it) and *d* (distance across it). Traffic AI works on a "straightened" road in those coordinates and is bent onto the real curve each frame for physics and drawing.
+- **Streaming a world.** The road ribbon, terrain and trees only exist near you and are rebuilt as you move. The terrain is rebuilt a few rows per frame so it never causes a stutter.
+- **Instancing.** All roadside trees draw in two calls and all forest pines in one.
 - **Geometry merging.** The cabin and cars collect pieces and merge them per material, so a whole interior is about 15 draw calls. This matters on a Quest 2.
 - **Pooling.** Only 3 signal gantries and 3 cameras exist; they are re-placed along the road each frame.
 - **Canvas textures.** The dashboard screens are drawn with the 2D canvas API and redrawn only when something changes.
@@ -131,7 +136,7 @@ Built with the Meta Quest 2 in mind: distant scenery is cheap and non-collidable
 
 ## Known limitations
 
-- Collision is 2D (cars cannot roll or tip) and assumes a flat road.
+- Collision is 2D (cars cannot roll or tip) and the road itself is flat: there are bends but no climbs or dips. The hills are scenery beside a flat plain, and a soft wall keeps you within about 66 m of the road.
 - The car is a stylised, approximate shape, not an exact scale model.
 - All traffic signals share one colour at a time; police only patrol your carriageway.
 - Fines do not end the game.
