@@ -9,6 +9,8 @@ canvas{display:block}
 #start h1{margin:0;font-size:34px;font-weight:600}#start p{margin:0;max-width:460px;line-height:1.4}
 .panel{position:fixed;z-index:10;background:rgba(255,255,255,.75);padding:8px 14px;border-radius:10px;font-size:13px;line-height:1.5;pointer-events:none}
 #gstat{left:14px;top:56px;font-size:14px}
+#impound{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(10,12,18,.9);color:#fff;text-align:center;font-family:system-ui,sans-serif}
+#impound h1{color:#ff5a4a;margin:0 0 8px;font-size:40px}#impound button{margin-top:18px;padding:12px 26px;border:0;border-radius:10px;background:#ff2d78;color:#fff;font:700 17px system-ui;cursor:pointer}#impound small{display:block;margin-top:10px;opacity:.7}
 #cross{position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000;z-index:9;pointer-events:none;display:none}
 #legend{left:14px;bottom:14px}#hud{left:50%;top:14px;transform:translateX(-50%);font-size:16px}
 #snd{position:fixed;left:14px;top:14px;z-index:10;padding:8px 14px;border:0;border-radius:10px;background:#1d2330;color:#fff;font-size:13px;cursor:pointer}
@@ -24,9 +26,9 @@ canvas{display:block}
 </head><body>
 <div id="start"><h1>Winter morning on the highway</h1>
 <p>You start in the driver's seat of a compact SUV, parked on the shoulder. Click anywhere to begin (this also starts the music).</p></div>
-<div id="gstat" class="panel"></div><div id="cross"></div><div id="vr"></div><button id="snd">Sound: off (M)</button><div id="hud" class="panel">0 km/h</div>
+<div id="impound"><div><h1>VEHICLE IMPOUNDED</h1><p>The highway police have seized your car.<br>There is no getting it back: the game is over.</p><button id="restart">Restart the game</button><small>or press R</small></div></div><div id="gstat" class="panel"></div><div id="cross"></div><div id="vr"></div><button id="snd">Sound: off (M)</button><div id="hud" class="panel">0 km/h</div>
 <div id="legend" class="panel"><b>Controls</b><br>W/S or ↑/↓ drive/walk · A/D or ←/→ steer/strafe · Shift faster<br>
-Mouse look (click to lock, or drag) · Scroll zoom · Space handbrake<br>1 driver · 2 front passenger · 3 rear left · 4 rear middle · 5 rear right (teleport)<br>Arrow keys drive from seat 1 (first press <b>D</b> on the console) · E get in/out · F first/third person<br>In Reverse the BACK key is the accelerator · mirrors are live<br>Limit 100 km/h: speed cameras flash + call the police, police chase you above it, traffic stops at red lights<br>Click dash controls with the crosshair (right-click / Shift = down · wheel over a knob adjusts) · M sound · G hold the dash model<br>
+Mouse look (click to lock, or drag) · Scroll zoom · Space handbrake<br>1 driver · 2 front passenger · 3 rear left · 4 rear middle · 5 rear right (teleport)<br>Arrow keys drive from seat 1 (first press <b>D</b> on the console) · E get in/out · F first/third person<br>In Reverse the BACK key is the accelerator · mirrors are live<br>Drive up the hills (the car stops at 50 m of elevation) · 1 in 10 busts = car impounded, game over (R restarts)<br>Limit 100 km/h: speed cameras flash + call the police, police chase you above it, traffic stops at red lights<br>Click dash controls with the crosshair (right-click / Shift = down · wheel over a knob adjusts) · M sound · G hold the dash model<br>
 VR: left stick move/drive · right stick 30° turn · A/X sound · B/Y get in/out · stick-click next seat · point + trigger presses a control (grip = down) · trigger grabs dash model</div>
 <script type="module">
 import * as THREE from 'three';
@@ -125,18 +127,18 @@ function vnoise(x,z){ const xi=Math.floor(x), zi=Math.floor(z), xf=x-xi, zf=z-zi
 function fbm(x,z,o){ let a=.5,f=1,t=0,n=0; for(let i=0;i<o;i++){ t+=a*vnoise(x*f,z*f); n+=a; f*=2.03; a*=.5; } return t/n; }
 // Height depends on the DISTANCE FROM THE ROAD: flat plain within 70 m (the car can't leave it), then rolling land, foothills, and mountains at the rim.
 function terrainH(x,z,dist){
-  if(dist<70) return -.06;                                                       // the flat plain: no noise needed (and a third of the grid skips the maths)
-  let h=ss(70,230,dist)*(10+34*fbm(x*.0045,z*.0045,4));                          // gentle rolling land
-  if(dist>220) h+=ss(220,700,dist)*(110*Math.pow(fbm(x*.0019+31,z*.0019+17,4),1.6));                              // foothills
-  if(dist>620){ const r=1-Math.abs(fbm(x*.0012+7,z*.0012+3,4)*2-1); h+=ss(620,950,dist)*(130*r*r); }              // ridged mountains near the edge of the loaded area
+  if(dist<38) return -.06;                                                       // flat verge beside the road (shoulder, trees, signals live here)
+  let h=ss(38,210,dist)*(14+90*Math.pow(fbm(x*.0035+5,z*.0035+9,4),1.3));       // FOOTHILLS YOU CAN DRIVE UP: level at the verge, tens of metres high within ~150 m
+  if(dist>330) h+=ss(330,820,dist)*(150*Math.pow(fbm(x*.0016+31,z*.0016+17,4),1.5));    // bigger mountains further out (too high to drive; the car stops at 50 m)
+  if(dist>600){ const r=1-Math.abs(fbm(x*.0012+7,z*.0012+3,4)*2-1); h+=ss(600,950,dist)*(180*r*r); }   // ridged crests at the edge of the loaded area
   return h-.06; }                                                                // 6 cm below the road surface
 const cLow=new THREE.Color(0xb3a97c), cGrass=new THREE.Color(0x8a9462), cDark=new THREE.Color(0x5f6b49), cRock=new THREE.Color(0x8c877d), cSnow=new THREE.Color(0xeef0f2), tcol2=new THREE.Color();
-function terrainColor(h,dist,n,out){ out.copy(cLow); out.lerp(cGrass,ss(40,200,dist)*(.5+.5*n)); out.lerp(cDark,ss(30,120,h)*.7); out.lerp(cRock,ss(90,200,h)); out.lerp(cSnow,ss(150,230,h)*.9); }   // dry plain -> grass -> dark scrub -> rock -> frost
-const TN=84, CS=22, TS=44, TV=(TN+1)*(TN+1);                                      // 84x84 cells of 22 m: about 1.8 km across, re-centred in 44 m steps
+function terrainColor(h,dist,n,out){ out.copy(cLow); out.lerp(cGrass,ss(38,160,dist)*(.5+.5*n)); out.lerp(cDark,ss(15,90,h)*.7); out.lerp(cRock,ss(70,170,h)); out.lerp(cSnow,ss(140,230,h)*.9); }   // dry plain -> grass -> dark scrub -> rock -> frost
+const TN=96, CS=18, TS=36, TV=(TN+1)*(TN+1);                                      // 96x96 cells of 18 m: about 1.7 km across, re-centred in 36 m steps
 const tgeo=new THREE.PlaneGeometry(1,1,TN,TN).rotateX(-Math.PI/2); tgeo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(TV*3),3));
 const tmesh=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0})); tmesh.receiveShadow=true; tmesh.frustumCulled=false; scene.add(tmesh);
 const Th=new Float32Array(TV), Td=new Float32Array(TV), Ts=new Float32Array(TN+1), T={ox:1e9,oz:1e9};
-const pineIM=new THREE.InstancedMesh(new THREE.ConeGeometry(2.4,10,7).translate(0,4,0),M(0xffffff,1),900); pineIM.frustumCulled=false; scene.add(pineIM);   // forest on the slopes: ONE draw call for up to 900 trees
+const pineIM=new THREE.InstancedMesh(new THREE.ConeGeometry(2.4,10,7).translate(0,4,0),M(0xffffff,1),900); pineIM.frustumCulled=false; scene.add(pineIM); const forestSolids=[];   // forest on the slopes: ONE draw call for up to 900 trees
 const tmp4=new THREE.Matrix4(), tq=new THREE.Quaternion(), tv3=new THREE.Vector3(), ts3=new THREE.Vector3(), tcl=new THREE.Color(), UPV=new THREE.Vector3(0,1,0);
 // The terrain is rebuilt in SLICES (a few rows per frame) into spare arrays, then swapped in at once. A full rebuild in one frame would stutter.
 const TJ={active:false,j:0,ox:0,oz:0,pos:new Float32Array(TV*3),col:new Float32Array(TV*3),h:new Float32Array(TV),d:new Float32Array(TV)};
@@ -149,12 +151,23 @@ function updateTerrain(refx,refz,sRef,rows=4){
   if(TJ.j<=TN) return;                                                            // not finished yet: carry on next frame
   tgeo.attributes.position.array.set(TJ.pos); tgeo.attributes.color.array.set(TJ.col); Th.set(TJ.h); Td.set(TJ.d);
   tgeo.attributes.position.needsUpdate=true; tgeo.attributes.color.needsUpdate=true; tgeo.computeVertexNormals(); T.ox=ox; T.oz=oz; TJ.active=false;
-  let n=0; for(let j=0;j<TN&&n<900;j++) for(let i=0;i<TN&&n<900;i++){                // scatter pines: a cell grows one if its hash is low, it is far from the road and not too high
+  let n=0; forestSolids.length=0; for(let j=0;j<TN&&n<900;j++) for(let i=0;i<TN&&n<900;i++){                // scatter pines: a cell grows one if its hash is low, it is far from the road and not too high
     const v=j*(TN+1)+i, wx=ox+(i-TN/2)*CS, wz=oz+(j-TN/2)*CS, hs=hash(Math.floor(wx/CS),Math.floor(wz/CS));
-    if(hs<.1&&Td[v]>100&&Th[v]>4&&Th[v]<170){ const sc=.8+hash(hs*91,3)*.9; tq.setFromAxisAngle(UPV,hs*60);
-      tmp4.compose(tv3.set(wx+hash(hs*17,1)*CS,Th[v]-.5,wz+hash(hs*29,2)*CS),tq,ts3.set(sc,sc*(.9+hash(hs*5,4)*.5),sc)); pineIM.setMatrixAt(n,tmp4);
-      tcl.setHSL(.33+hash(hs*7,5)*.05,.35,.16+hash(hs*13,6)*.08); pineIM.setColorAt(n,tcl); n++; } }
+    if(hs<.1&&Td[v]>100&&Th[v]>1&&Th[v]<170){ const sc=.8+hash(hs*91,3)*.9, px=wx+hash(hs*17,1)*CS, pz=wz+hash(hs*29,2)*CS, gy=groundY(px,pz); tq.setFromAxisAngle(UPV,hs*60);
+      tmp4.compose(tv3.set(px,gy-.5,pz),tq,ts3.set(sc,sc*(.9+hash(hs*5,4)*.5),sc)); pineIM.setMatrixAt(n,tmp4);
+      tcl.setHSL(.33+hash(hs*7,5)*.05,.35,.16+hash(hs*13,6)*.08); pineIM.setColorAt(n,tcl); n++;
+      if(gy<55&&forestSolids.length<500) forestSolids.push({x:px,z:pz,r:.55*sc}); } }                       // trees on slopes you can reach are solid
   pineIM.count=n; pineIM.instanceMatrix.needsUpdate=true; if(pineIM.instanceColor) pineIM.instanceColor.needsUpdate=true; }
+// GROUND HEIGHT under any point: read straight from the same grid the terrain mesh is drawn from, using the SAME triangle split as PlaneGeometry,
+// so a car sits exactly on the surface you see. (Flat verge near the road reads as 0, i.e. road level.)
+function groundY(x,z){
+  const fx=(x-T.ox)/CS+TN/2, fz=(z-T.oz)/CS+TN/2, i=Math.floor(fx), j=Math.floor(fz); if(i<0||j<0||i>=TN||j>=TN) return 0;
+  const u=fx-i, v=fz-j, a=j*(TN+1)+i, b=a+TN+1, h00=Th[a], h10=Th[a+1], h01=Th[b], h11=Th[b+1];
+  return Math.max(0,u+v<=1?h00+u*(h10-h00)+v*(h01-h00):h11+(1-u)*(h01-h11)+(1-v)*(h10-h11)); }          // each square is two triangles: pick the one the point is in
+const GT={pitch:0,roll:0}, GS={h:0,pitch:0,roll:0};
+function slopeAt(x,z,yaw,out){                                                                       // height under the car + how much it is tilted (nose up/down = pitch, sideways = roll)
+  const sn=Math.sin(yaw), cs=Math.cos(yaw), fx=-sn, fz=-cs, rx=cs, rz=-sn;
+  out.h=groundY(x,z); out.pitch=Math.atan2(groundY(x+fx*2.2,z+fz*2.2)-groundY(x-fx*2.2,z-fz*2.2),4.4); out.roll=Math.atan2(groundY(x+rx*.9,z+rz*.9)-groundY(x-rx*.9,z-rz*.9),1.8); return out; }
 // BACKDROP MOUNTAINS: three huge rings of ridged noise far away. They use "baked haze" (their foot fades to the sky colour) instead of real fog, so they stay visible.
 function ridgeAng(a,seed){ const x=Math.cos(a)*3+seed, z=Math.sin(a)*3+seed; let t=0,amp=.55,f=1; for(let o=0;o<5;o++){ t+=amp*(1-Math.abs(vnoise(x*f,z*f)*2-1)); f*=2.1; amp*=.5; } return t; }
 function makeRing(R,base,range,seed,lowCol,highCol,snowAt){
@@ -278,7 +291,7 @@ function makeCockpit(full=true,live=true){                          // full=fals
   return {g,wheel,trim:tg}; }
 
 const VMAX=185/3.6;                                                  // top speed: 185 km/h in m/s
-const GAME={fines:0,chase:false,cd:0,sig:'G',flash:0,pz:0,limit:100};   // limit in km/h. chase = any police car pursuing; cd = distance to nearest; pz = previous z (to detect line crossings)
+const GAME={fines:0,chase:false,cd:0,sig:'G',flash:0,pz:0,limit:100,over:false};   // over = the car has been impounded   // limit in km/h. chase = any police car pursuing; cd = distance to nearest; pz = previous z (to detect line crossings)
 /* ---------- 6b. LIVE DASHBOARD: state, screen drawing, interactive controls ---------- */
 // IDEA: the dashboard's state lives in two plain objects (DS = what is switched on, UI = the 3D objects). Screens are small
 // <canvas> pictures painted by code at runtime (no image files) and re-painted ONLY when something changes. Every clickable
@@ -517,8 +530,8 @@ function makePolice(){                                              // a normal 
   m.userData.lb={red:rm,blue:bm,on:null}; return m; }
 
 /* ---------- 8. PLAYER'S SUV, TRAFFIC, INSPECTION PEDESTAL ---------- */
-const P={x:-16.7,z:0,yaw:0,speed:0,steer:0,stIn:0,lat:0,w:0,kin:0,vx:0,vz:0,om:0,invM:1/1300,invI:1/2260}, W={x:0,z:0};         // P = car state, W = walker state
-const car=makeCar(0xcdd5d0,true), cp=makeCockpit(); car.add(cp.g); scene.add(car);
+const P={x:-16.7,z:0,yaw:0,speed:0,steer:0,stIn:0,lat:0,w:0,kin:0,vx:0,vz:0,om:0,invM:1/1300,invI:1/2260,gy:0,sx:-16.7,sz:0}, W={x:0,z:0,gy:0,sx:0,sz:0};   // gy = ground height under us; sx,sz = last position that was inside the drivable area         // P = car state, W = walker state
+const car=makeCar(0xcdd5d0,true), cp=makeCockpit(); car.add(cp.g); scene.add(car); car.rotation.order='YXZ';   // turn first (yaw), then tilt to the slope (pitch, roll)
 const avatar=new THREE.Mesh(new THREE.CapsuleGeometry(.25,1.1,4,8),M(0x2f4a63)); avatar.position.y=.8; const av=new THREE.Group(); av.add(avatar); scene.add(av);
 const traffic=[]; const PAINT=[0xe9e9e6,0x2f4a63,0xb33a3a,0xc9c7bd,0x555a60,0x3b6b52,0xe0b04a,0x8d9aa8], LCR=[25,21,17,13];   // LCR = cruise speed (m/s) of each lane; the fast lane is next to the median
 function newCar(mesh,side,li,z){ const cr=Math.random()*2, cruise=LCR[li]+cr;                  // every car is also a physics body (x,z,yaw,vx,vz,om,invM,invI) so it can collide
@@ -570,7 +583,7 @@ let grabbed=false;
 let seat=0, mode='drive', tp=false, yaw=0, pitch=0, shake=0, locked=false, dragging=false, msgT=0, inXR=false;
 const SEATS=[{x:.37,z:.3},{x:-.37,z:.3},{x:-.46,z:1.2},{x:0,z:1.2},{x:.46,z:1.2}];     // eye positions (car-local)
 const SEATNAMES=['Driver seat','Front passenger','Rear left','Rear middle','Rear right'];
-function goSeat(i){ mode='drive'; seat=i; yaw=0; pitch=0; msg(SEATNAMES[i]); }                 // teleport straight into a seat
+function goSeat(i){ if(GAME.over) return; mode='drive'; seat=i; yaw=0; pitch=0; msg(SEATNAMES[i]); }                 // teleport straight into a seat
 const keys={}; const dirV=new THREE.Vector3(), eye=new THREE.Vector3(), tv=new THREE.Vector3();
 function msg(t){ $('hud').dataset.m=t; msgT=2; }
 
@@ -581,7 +594,7 @@ function hotOf(o){ while(o&&!(o.userData&&o.userData.act)) o=o.parent; return o;
 function pickHot(){ for(const h of ray.intersectObjects(UI.hot,true)){ const o=hotOf(h.object); if(o&&UI.hot.includes(o)) return {o,h}; } return null; }
 function aimDesktop(){ camera.updateMatrixWorld(); ray.setFromCamera(locked?rv.set(0,0):rv.set(ptr.x,ptr.y),camera); }
 function aimCtrl(c){ c.updateMatrixWorld(true); tm.identity().extractRotation(c.matrixWorld); ray.ray.origin.setFromMatrixPosition(c.matrixWorld); ray.ray.direction.set(0,0,-1).applyMatrix4(tm); }
-function usable(a){ if(mode!=='drive'||(tp&&!inXR)) return 'Sit inside the car first'; if(a.need==='driver'&&seat!==0) return 'Driver seat only'; if(seat>1) return 'Front seats only'; return ''; }
+function usable(a){ if(GAME.over) return 'Vehicle impounded'; if(mode!=='drive'||(tp&&!inXR)) return 'Sit inside the car first'; if(a.need==='driver'&&seat!==0) return 'Driver seat only'; if(seat>1) return 'Front seats only'; return ''; }
 function tick(f=700){ if(!ac||!soundOn) return; const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain(); o.type='square'; o.frequency.value=f;
   g.gain.setValueAtTime(.05,t); g.gain.exponentialRampToValueAtTime(.001,t+.05); o.connect(g); g.connect(master); o.start(t); o.stop(t+.06); }
 function press(p,dir){                                                                        // dir: -1 = "down" (right-click / Shift / VR grip)
@@ -592,7 +605,7 @@ function setHover(o){ if(o===UI.hover) return; const old=UI.hover; if(old&&!old.
   UI.hover=o; if(o&&!o.userData.noScale) o.scale.setScalar(1.12); const a=o&&o.userData.act; setTip(a?a.name+(usable(a)?'  ·  '+usable(a):''):null); }
 uiSync(); syncGear(); applyLamps();                                                           // paint every screen once at start
 
-addEventListener('keydown',e=>{ keys[e.code]=true; if(e.repeat) return;
+addEventListener('keydown',e=>{ if(GAME.over&&e.code==='KeyR') location.reload(); keys[e.code]=true; if(e.repeat) return;
   const sm=/^(Digit|Numpad)([1-5])$/.exec(e.code); if(sm) goSeat(+sm[2]-1);
   if(e.code==='KeyF'&&!inXR) tp=!tp; if(e.code==='KeyE') toggleCar(); if(e.code==='KeyM') toggleSound(); if(e.code==='KeyG') grabbed=!grabbed;
   if(['Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault(); });
@@ -610,7 +623,7 @@ addEventListener('wheel',e=>{ if(inXR) return; aimDesktop(); const hp=pickHot();
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 $('start').addEventListener('click',()=>{ $('start').style.display='none'; startAudio(); });
 $('snd').addEventListener('click',toggleSound);
-function toggleCar(){
+function toggleCar(){ if(GAME.over) return;
   if(mode==='drive'){ if(Math.abs(P.speed)>2) return msg('Stop the car first');
     const c=Math.cos(P.yaw), s=Math.sin(P.yaw); W.x=P.x-1.9*c+.2*s; W.z=P.z+1.9*s+.2*c; yaw=P.yaw+yaw; mode='walk'; DS.gear='P'; syncGear(); }   // step out on the far (non-road) side
   else if(Math.hypot(W.x-P.x,W.z-P.z)<4){ mode='drive'; seat=0; yaw=0; P.speed=0; } else msg('Walk up to the SUV to get in'); }
@@ -676,7 +689,7 @@ renderer.xr.addEventListener('sessionstart',()=>{ inXR=true; tp=false; $('start'
 renderer.xr.addEventListener('sessionend',()=>{ inXR=false; });
 for(const i of [0,1]){ const c=renderer.xr.getController(i); rig.add(c); ctrls.push(c);
   const L=new THREE.Mesh(new THREE.CylinderGeometry(.0025,.0025,1,6).rotateX(Math.PI/2).translate(0,0,-.5),new THREE.MeshBasicMaterial({color:0x35b6ff})); L.visible=false; c.add(L); c.userData.laser=L;   // visible aiming laser
-  c.addEventListener('selectstart',()=>{ aimCtrl(c); const p=pickHot(); if(p) press(p); else if(Math.hypot(eye.x-podBase.x,eye.z-podBase.z)<5) grabbed=true; });   // trigger: press a control, else grab the dash model
+  c.addEventListener('selectstart',()=>{ if(GAME.over){ location.reload(); return; } aimCtrl(c); const p=pickHot(); if(p) press(p); else if(Math.hypot(eye.x-podBase.x,eye.z-podBase.z)<5) grabbed=true; });   // trigger: press a control, else grab the dash model
   c.addEventListener('selectend',()=>grabbed=false);
   c.addEventListener('squeezestart',()=>{ aimCtrl(c); const p=pickHot(); if(p) press(p,-1); }); }                                                                    // grip: decrease / step backwards
 let vx=0,vy=0,snapped=false; const prevBtn={};
@@ -735,7 +748,8 @@ function physics(){
     if(!parked){ for(const t of trees){ if(Math.abs(t.z+wz-P.z)>12||Math.abs(t.x-P.x)>12) continue;
         const h=circleObb(P,t.x,t.z+wz,t.r); if(h) hit=Math.max(hit,resolve(P,STATIC,h.n,h.pen,h.px,h.pz,.15)); }
       const h=circleObb(P,podSolid.x,podSolid.z,podSolid.r); if(h) hit=Math.max(hit,resolve(P,STATIC,h.n,h.pen,h.px,h.pz,.15));
-      for(const t of extra){ if(Math.abs(t.z-P.z)>12||Math.abs(t.x-P.x)>12) continue; const q=circleObb(P,t.x,t.z,t.r); if(q) hit=Math.max(hit,resolve(P,STATIC,q.n,q.pen,q.px,q.pz,.2)); } }   // signal / camera poles
+      for(const t of extra){ if(Math.abs(t.z-P.z)>12||Math.abs(t.x-P.x)>12) continue; const q=circleObb(P,t.x,t.z,t.r); if(q) hit=Math.max(hit,resolve(P,STATIC,q.n,q.pen,q.px,q.pz,.2)); }   // signal / camera poles
+      for(const t of forestSolids){ if(Math.abs(t.z-P.z)>12||Math.abs(t.x-P.x)>12) continue; const q=circleObb(P,t.x,t.z,t.r); if(q) hit=Math.max(hit,resolve(P,STATIC,q.n,q.pen,q.px,q.pz,.15)); } }   // pines on the hills
     for(let i=0;i<ALL.length;i++) for(let j=i+1;j<ALL.length;j++){ const a=ALL[i], b=ALL[j];   // car vs car
       if(Math.abs(a.x-b.x)>5||Math.abs(a.z-b.z)>5) continue; const h=sat(a,b);
       if(h){ const v=resolve(a,b,h.n,h.pen,h.px,h.pz,.2); if(i===0) hit=Math.max(hit,v); } } }
@@ -745,9 +759,9 @@ function physics(){
 function walkerPush(){                                              // the pedestrian: a circle pushed out of everything solid
   const wz=world.position.z, push=(cx,cz,r)=>{ const dx=W.x-cx, dz=W.z-cz, d=Math.hypot(dx,dz), pen=.35+r-d; if(pen>0&&d>1e-4){ W.x+=dx/d*pen; W.z+=dz/d*pen; } };
   for(const t of trees) if(Math.abs(t.z+wz-W.z)<4) push(t.x,t.z+wz,t.r);
-  push(podSolid.x,podSolid.z,podSolid.r); for(const t of extra) if(Math.abs(t.z-W.z)<4) push(t.x,t.z,t.r);
+  push(podSolid.x,podSolid.z,podSolid.r); for(const t of extra) if(Math.abs(t.z-W.z)<4) push(t.x,t.z,t.r); for(const t of forestSolids) if(Math.abs(t.z-W.z)<4&&Math.abs(t.x-W.x)<4) push(t.x,t.z,t.r);
   for(const b of ALL){ if(Math.abs(b.x-W.x)>4||Math.abs(b.z-W.z)>4) continue; const h=circleObb(b,W.x,W.z,.35); if(h){ W.x-=h.n[0]*h.pen; W.z-=h.n[1]*h.pen; } }
-  const q=worldToRoad(W.x,W.z,PR.s,RW); if(Math.abs(q.d)>66){ const o=q.d-Math.sign(q.d)*66; W.x-=o*Math.cos(q.a); W.z+=o*Math.sin(q.a); } }   // the flat plain ends 70 m from the road: stay inside it
+  const q=worldToRoad(W.x,W.z,PR.s,RW); if(groundY(W.x,W.z)>50||Math.abs(q.d)>300){ W.x=W.sx; W.z=W.sz; } else { W.sx=W.x; W.sz=W.z; } }   // on foot you may climb to 50 m too; beyond that you are stopped
 function thud(v){ if(!ac||!soundOn) return; const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain(); o.type='sine';
   o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(40,t+.25); g.gain.setValueAtTime(Math.min(.6,.1+v*.03),t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
   o.connect(g); g.connect(master); o.start(t); o.stop(t+.35); }
@@ -769,9 +783,14 @@ function syncFromBodies(){                                          // after phy
   for(const k of traffic){ fromWorld(k); const b=k.body;
     if(k.mode==='chase'||k.mode==='bust'){ const c=Math.cos(b.yaw), s=Math.sin(b.yaw); k.speed=-s*b.vx-c*b.vz; k.lat=c*b.vx-s*b.vz; k.w=-b.om-k.kin; k.v=k.speed; }   // free-driving police car
     else { k.lv=k.vx; k.v=k.vz*k.dirZ; } } }
-function offroadLimit(){                                            // the flat plain is 70 m wide: past 66 m from the road a soft wall nudges the car back
-  const q=worldToRoad(P.x,P.z,PR.s,RS); if(Math.abs(q.d)>66){ const o=q.d-Math.sign(q.d)*66; P.x-=o*Math.cos(q.a); P.z+=o*Math.sin(q.a); P.speed*=.6; msg('Off-road limit: please return to the road'); } }
+function offroadLimit(){                                            // THE DRIVABLE WORLD: anywhere up to 50 m of elevation, within 300 m of the road. Past that a soft wall puts you back where you were.
+  const q=worldToRoad(P.x,P.z,PR.s,RS), gh=groundY(P.x,P.z);
+  if(gh>50||Math.abs(q.d)>300){ P.x=P.sx; P.z=P.sz; P.speed*=-.25; msg(gh>50?'Too high to drive: the mountain track ends here':'Out of bounds: return to the road'); }
+  else { P.sx=P.x; P.sz=P.z; } }
 function fine(n,why){ GAME.fines+=n; msg(why+'  -  fine ₹'+n); }
+const IMPOUND_CHANCE=.1;                                            // every bust has a 1 in 10 chance of ending the game: the police impound the car
+const rollImpound=()=>Math.random()<IMPOUND_CHANCE;
+function impound(){ if(GAME.over) return; GAME.over=true; P.speed=0; msg('VEHICLE IMPOUNDED'); showImpound(); }
 function laneFree(k,nx){                                            // is the neighbouring lane clear of traffic AND of you? (look further back if someone is faster than us)
   const clear=(x,z,v)=>{ if(Math.abs(x-nx)>2.8) return true; const rel=(z-k.z)*k.dirZ; return !(rel>-(14+Math.max(0,v-k.v)*1.5)&&rel<24+Math.max(0,k.v-v)*1.2); };
   for(const j of traffic){ if(j===k||j.dirZ!==k.dirZ) continue;
@@ -836,7 +855,7 @@ function updateChase(dt){
       if(mode==='drive'&&kmh>GAME.limit&&PR.x<-1.5&&d<130) k.seeT+=dt; else k.seeT=Math.max(0,k.seeT-dt); if(k.seeT>1.2) startChase(k); }
     else if(k.mode==='chase'){ near=Math.min(near,d);
       if(d<14&&Math.abs(P.speed)<1.5) k.stopT+=dt; else k.stopT=0;                                      // you stopped with the cop alongside -> busted
-      if(k.stopT>2.5){ fine(1500,'BUSTED'); k.mode='bust'; k.bustT=4; UI.lastK=-1; }
+      if(k.stopT>2.5){ fine(1500,'BUSTED'); if(rollImpound()) impound(); k.mode='bust'; k.bustT=4; UI.lastK=-1; }
       if(d>380) k.farT+=dt; else k.farT=0; if(k.farT>8){ msg('You lost the police!'); copReset(k); UI.lastK=-1; } }   // 380 m away for 8 s = escaped
     else if(k.mode==='bust'){ k.bustT-=dt; if(k.bustT<=0){ copReset(k); UI.lastK=-1; } } }
   GAME.chase=cops.some(c=>c.mode==='chase'||c.mode==='bust'); GAME.cd=near; }
@@ -853,6 +872,12 @@ updatePR(); GAME.pz=PR.z;
 // Speed-camera flash: a white quad glued to the camera (so it shows in VR too, where the page's HTML can't be seen); the loop fades it out.
 const flashQ=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1.6),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthTest:false,depthWrite:false,fog:false,toneMapped:false}));
 flashQ.position.z=-.3; flashQ.renderOrder=999; flashQ.visible=false; camera.add(flashQ);
+// IMPOUND SCREEN: the page overlay (desktop) and a text panel glued to the camera (so it is also readable inside VR, where page HTML is invisible).
+const impT=canv(512,256); rr(impT.x,0,0,512,256,24,'rgba(10,12,18,.94)','#ff4a3a'); tx(impT.x,'VEHICLE IMPOUNDED',256,84,44,'#ff5a4a'); tx(impT.x,'The highway police seized your car.',256,140,22,'#ffffff'); tx(impT.x,'Press trigger / R / click to restart',256,192,20,'#9fb4c8'); impT.t.needsUpdate=true;
+const impQ=new THREE.Mesh(new THREE.PlaneGeometry(.9,.45),new THREE.MeshBasicMaterial({map:impT.t,transparent:true,depthTest:false,depthWrite:false,fog:false,toneMapped:false}));
+impQ.position.set(0,0,-.7); impQ.renderOrder=1001; impQ.visible=false; camera.add(impQ);
+function showImpound(){ impQ.visible=true; $('impound').style.display='flex'; if(document.exitPointerLock) document.exitPointerLock(); }
+$('restart').addEventListener('click',()=>location.reload());
 
 /* ---------- 12c. WORKING MIRRORS ---------- */
 // A mirror shows the world as seen FROM the mirror, looking backwards. Each mirror owns a hidden camera + a small RENDER TARGET (an off-screen
@@ -900,6 +925,7 @@ renderer.setAnimationLoop(()=>{
   const boost=!!(keys.ShiftLeft||keys.ShiftRight);
   let ix=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0), iz=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
   if(inXR){ ix=vx; iz=-vy; }
+  if(GAME.over){ ix=0; iz=0; P.speed*=Math.exp(-4*dt); }                 // impounded: no more driving, the car rolls to a stop
   if(mode==='drive'){                                              // driving: "bicycle model" + tyre grip
     if(seat!==0){ ix=0; iz=0; }                                      // arrow keys / stick only drive from seat 1
     const v=Math.abs(P.speed), maxS=Math.atan(Math.min(.62,27/(v*v+1)));    // at speed the wheels may only turn a few degrees: keeps cornering force near what tyres can hold (~1 g)
@@ -911,6 +937,7 @@ renderer.setAnimationLoop(()=>{
     P.speed-=P.speed*.02*dt+Math.sign(P.speed)*Math.min(Math.abs(P.speed),.8*dt);           // drag + rolling resistance
     if(keys.Space&&seat===0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),16*dt);   // handbrake
     else if(seat!==0) P.speed-=Math.sign(P.speed)*Math.min(Math.abs(P.speed),5*dt);          // nobody driving: coast to a stop
+    P.speed-=9.81*Math.sin(GT.pitch)*.65*dt; P.lat-=9.81*Math.sin(GT.roll)*.25*dt;   // GRAVITY ALONG THE SLOPE: climbing slows you, rolling downhill speeds you up, a side slope slides you sideways
     P.speed=MU.clamp(P.speed,-6,VMAX);                                                         // 185 km/h
     if(Math.abs(PR.x)<1.5){ P.speed-=P.speed*.5*dt; shake=Math.max(shake,Math.min(.05,Math.abs(P.speed)*.002)); }   // rough median strip: drags and shakes
     else if(Math.abs(PR.x)>18.2) P.speed-=P.speed*.25*dt;                                      // grass beyond the shoulder
@@ -923,7 +950,8 @@ renderer.setAnimationLoop(()=>{
   { const c=Math.cos(P.yaw), s=Math.sin(P.yaw);                     // integrate the SUV as a body with a velocity vector and spin
     P.vx=-s*P.speed+c*P.lat; P.vz=-c*P.speed-s*P.lat; P.x+=P.vx*dt; P.z+=P.vz*dt; P.yaw+=(P.kin+P.w)*dt; P.om=-(P.kin+P.w); }
   const ref=mode==='drive'?P:W;
-  updatePR(); const rq=worldToRoad(ref.x,ref.z,PR.s,RQ), refZ=-rq.s; ensureWorld(ref.x,ref.z,rq.s);   // where are we ON the road? then keep the road, terrain and trees streamed in around us
+  updatePR(); const rq=worldToRoad(ref.x,ref.z,PR.s,RQ), refZ=-rq.s; ensureWorld(ref.x,ref.z,rq.s);
+  { slopeAt(P.x,P.z,P.yaw,GS); const k=Math.min(1,dt*8); GT.pitch+=(GS.pitch-GT.pitch)*k; GT.roll+=(GS.roll-GT.roll)*k; P.gy+=(GS.h-P.gy)*Math.min(1,dt*12); W.gy+=(groundY(W.x,W.z)-W.gy)*Math.min(1,dt*12); }   // ground height + tilt under the car and the pedestrian (smoothed, so the car doesn't twitch over the 18 m terrain cells)   // where are we ON the road? then keep the road, terrain and trees streamed in around us
   const el=clock.elapsedTime;
   { const sg=sigState(el); if(sg!==GAME.sig){ GAME.sig=sg; SIGL.R.color.setHex(sg==='R'?0xff2a1a:0x330606); SIGL.Y.color.setHex(sg==='Y'?0xffc21a:0x332a06); SIGL.G.color.setHex(sg==='G'?0x2cff6a:0x06260c); }
     placeInfra(refZ); updateChase(dt); checkEnforcement(); }
@@ -933,22 +961,22 @@ renderer.setAnimationLoop(()=>{
   for(const k of traffic){
     if(k.mode==='traffic'||k.mode==='patrol'){ wrapCar(k,{z:refZ}); toWorld(k); }                 // loop: leave far ahead/behind, re-enter hidden by fog
     const b=k.body; if(Math.hypot(b.x-ref.x,b.z-ref.z)<150) for(const w of k.mesh.userData.wheels) w.rotation.x-=k.v/.36*dt;  // only spin wheels you can see
-    k.mesh.position.set(b.x,0,b.z); k.mesh.rotation.y=b.yaw;
+    k.mesh.position.set(b.x,(k.mode==='chase'||k.mode==='bust')?groundY(b.x,b.z):0,b.z); k.mesh.rotation.y=b.yaw;   // road cars stay at road level; a chasing cop follows the hills too
     if(k.cop){ const lb=k.mesh.userData.lb, on=(k.mode==='chase'||k.mode==='bust')?(Math.floor(el*6)%2?1:2):0;       // flashing red / blue light bar
       if(lb.on!==on){ lb.on=on; lb.red.color.setHex(on===1?0xff2020:0x2a0606); lb.blue.color.setHex(on===2?0x2a7bff:0x060c24); } } }
   if(GAME.flash>0){ GAME.flash=Math.max(0,GAME.flash-dt*2.5); flashQ.material.opacity=GAME.flash*.9; flashQ.visible=GAME.flash>.01; }   // camera flash fades out
   setSiren(GAME.chase?MU.clamp(1-GAME.cd/450,0,1):0);
   { const t='Limit '+GAME.limit+' km/h  ·  Fines ₹'+GAME.fines+'  ·  Signal '+{G:'GREEN',Y:'YELLOW',R:'RED'}[GAME.sig]+(GAME.chase?'  ·  POLICE CHASE'+(GAME.cd<1e8?' ('+Math.round(GAME.cd)+' m)':''):''); const gs=$('gstat'); if(gs.textContent!==t) gs.textContent=t; }
   far.position.set(ref.x,0,ref.z); clouds.rotation.y+=dt*.002;
-  sun.position.set(ref.x,0,ref.z).addScaledVector(sunDir,80); sun.target.position.set(ref.x,0,ref.z);
-  car.position.set(P.x,0,P.z); car.rotation.y=P.yaw; if(mode==='walk'||tp) for(const w of car.userData.wheels) w.rotation.x-=P.speed/.36*dt; cp.wheel.rotation.z=-P.stIn*3.1;
+  { const ry=mode==='drive'?P.gy:W.gy; sun.position.set(ref.x,ry,ref.z).addScaledVector(sunDir,80); sun.target.position.set(ref.x,ry,ref.z); }   // the shadow box follows you uphill
+  car.position.set(P.x,P.gy,P.z); car.rotation.set(GT.pitch,P.yaw,GT.roll); if(mode==='walk'||tp) for(const w of car.userData.wheels) w.rotation.x-=P.speed/.36*dt; cp.wheel.rotation.z=-P.stIn*3.1;
   car.userData.shell.visible=mode==='walk'||tp; cp.trim.visible=!car.userData.shell.visible;   // inside trim only when the outside shell is hidden
-  av.visible=mode==='walk'&&tp; av.position.set(W.x,0,W.z);
+  av.visible=mode==='walk'&&tp; av.position.set(W.x,W.gy,W.z);
   // rig placement: desktop rig = eye height; VR rig stays at y=0 (the headset adds your real head height)
-  const eyeH=inXR?0:(mode==='drive'?1.2:1.6), c=Math.cos(P.yaw), s=Math.sin(P.yaw);
-  if(mode==='drive'&&(!tp||inXR)){ const S=SEATS[seat]; rig.position.set(P.x+S.x*c+S.z*s,eyeH,P.z-S.x*s+S.z*c); }  // the chosen seat
-  else if(mode==='drive') rig.position.set(P.x,1.2,P.z); else rig.position.set(W.x,eyeH,W.z);
-  rig.rotation.y=(mode==='drive'?P.yaw:0)+yaw;
+  const eyeH=inXR?0:(mode==='drive'?1.2:1.6), c=Math.cos(P.yaw), s=Math.sin(P.yaw), gy=mode==='drive'?P.gy:W.gy;
+  if(mode==='drive'&&(!tp||inXR)){ const S=SEATS[seat]; rig.position.set(P.x+S.x*c+S.z*s,eyeH+gy,P.z-S.x*s+S.z*c); }  // the chosen seat
+  else if(mode==='drive') rig.position.set(P.x,1.2+gy,P.z); else rig.position.set(W.x,eyeH+gy,W.z);
+  rig.rotation.order='YXZ'; { const tl=(!inXR&&mode==='drive')?.85:0; rig.rotation.set(GT.pitch*tl,(mode==='drive'?P.yaw:0)+yaw,GT.roll*tl); }   // desktop: the view tilts with the car on slopes. VR: only the height changes (tilting the world would make you sick)
   if(!inXR){ camera.rotation.x=pitch; camera.position.set((Math.random()-.5)*shake,(Math.random()-.5)*shake,tp?(mode==='drive'?7.5:3):0); if(tp) camera.position.y+=.5; }
   shake*=.9;
   // inspection: get close to the dash model and it lifts + rotates; trigger/G pulls it to your face
