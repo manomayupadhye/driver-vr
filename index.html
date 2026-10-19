@@ -214,79 +214,78 @@ function builder(g){
       g.add(new THREE.Mesh(mergeGeometries(mixed?list.map(x=>x.index?x.toNonIndexed():x):list),mat)); } } }; }
 function makeCockpit(full=true,live=true){                          // full=false: front half only; live=false: static look-alike (inspection model)
   const g=new THREE.Group(), K=builder(g);
-  const dash=M(0x1d1e21,.8), dash2=M(0x111214,.85), trim=M(0x2b2c30,.75), blk=M(0x050607,.25,.3), chrome=M(0xc2c5c9,.25,.9),
-    fab=M(0x4b4b50,.95), fabL=M(0x66666c,.95), head=M(0x3b3b3f,.95), carpet=M(0x18181a,1), mir=M(0x8fa0b0,.05,1),
-    glow=basic(0x4fb8ff), red=basic(0xff2a1a), lamp=basic(0xfff4d0), scr=basic(0x0b1722), lcd=basic(0x9fe0ff), dial=basic(0x9fd4ff),
-    glass=new THREE.MeshStandardMaterial({color:0x1b2733,roughness:.1,transparent:true,opacity:.35});
+  // MATERIALS: charcoal soft-touch dash, piano-black glass surrounds, brushed-silver trim, dark leather
+  const dash=M(0x2b2c30,.85), dash2=M(0x1e1f22,.85), trim=M(0x34363b,.8), blk=M(0x050607,.25,.3), piano=M(0x090a0c,.15,.5),
+    silver=M(0xb9bcc0,.4,.7), chrome=M(0xcdd0d4,.25,.9), leather=M(0x202124,.6), leatherL=M(0x2f3136,.75), head=M(0x2d2e32,.95), carpet=M(0x151517,1),
+    red=basic(0xff2a1a), lamp=basic(0xfff4d0), scr=basic(0x0b1722), lcd=basic(0x9fe0ff), RB=(w,h,d,r)=>new RoundedBoxGeometry(w,h,d,3,r);
+  const fab=leather, fabL=leatherL;
   K.box(carpet,1.7,.04,2.6,0,.47,.5);                                // floor
-  // --- dashboard: soft-touch charcoal slab over a darker lower fascia ---
-  K.box(dash,1.76,.14,.55,0,.9,-.68); K.box(dash2,1.7,.38,.32,0,.64,-.6);
-  K.box(trim,.62,.22,.03,-.5,.76,-.43);                             // passenger-side textured strip
-  K.box(trim,.7,.26,.02,-.45,.58,-.435); K.box(chrome,.12,.012,.015,-.45,.68,-.42);   // glove box + handle
-  K.box(trim,.4,.2,.03,.4,.55,-.43); K.box(dash2,.16,.14,.2,.37,.78,-.26);            // driver knee panel, steering column shroud
-  // --- AC vents: two long slim horizontal vents + square corner vents (chrome frame, black slats) ---
-  K.box(chrome,.64,.04,.02,-.48,.86,-.4); K.box(blk,.6,.022,.022,-.48,.86,-.4);
-  K.box(chrome,.52,.04,.02,.14,.86,-.4);  K.box(blk,.48,.022,.022,.14,.86,-.4);
-  for(const s of [-1,1]){ K.box(chrome,.13,.075,.03,s*.78,.87,-.4); K.box(blk,.1,.05,.032,s*.78,.87,-.4); for(let i=-1;i<=1;i++) K.box(chrome,.09,.004,.034,s*.78,.87+i*.014,-.4); }
-  K.box(glow,.7,.01,.012,-.5,.73,-.395); K.box(glow,.35,.01,.012,.45,.73,-.395);       // blue ambient light strips
-  // --- climate panel under the screen: button row (centre = red HAZARD), two rotary knobs, temp display ---
-  K.box(blk,.5,.2,.03,0,.73,-.425);
-  if(!live){                                                         // (live cabins get real, clickable versions from buildDashUI)
-    for(let i=0;i<7;i++) i===3 ? K.box(red,.04,.03,.012,0,.785,-.405) : K.box(chrome,.04,.022,.012,-.18+i*.06,.785,-.405);
-    for(const x of [-.15,.15]){ K.cyl(chrome,.03,.03,x,.7,-.405,Math.PI/2); K.cyl(blk,.022,.032,x,.7,-.405,Math.PI/2); }
-    K.box(lcd,.12,.03,.008,0,.7,-.408); for(let i=0;i<5;i++) K.box(chrome,.04,.02,.012,-.12+i*.06,.65,-.405); }
-  // --- panoramic curved display: 12.3" infotainment + 12.3" cluster under one glass strip ---
-  K.box(blk,.7,.17,.06,.12,1.04,-.53);
-  K.box(scr,.4,.125,.008,-.03,1.04,-.478,0,.1);                     // infotainment (angled toward the driver)
-  if(!live) [basic(0xd9a21b),basic(0x2f6fbf),basic(0x2aa6a0),basic(0xe07b2a)].forEach((m,i)=>{ const dx=-.15+i*.1;     // 4 widget tiles
-    K.box(m,.085,.075,.004,-.03+dx*Math.cos(.1),1.045,-.475-dx*Math.sin(.1),0,.1); });
-  K.box(scr,.26,.125,.008,.34,1.04,-.496);                          // digital cluster
-  if(!live){ for(const x of [.285,.395]) K.geo(new THREE.TorusGeometry(.04,.004,8,28),dial,x,1.04,-.49);
-    K.box(glow,.03,.05,.004,.34,1.04,-.491); K.box(lcd,.03,.012,.004,.395,1.04,-.491); }
+  // --- dashboard: soft-touch upper dash over a darker lower fascia, with a stitched seam ---
+  K.geo(RB(1.76,.14,.55,.045),dash,0,.9,-.68); K.geo(RB(1.7,.38,.32,.04),dash2,0,.64,-.6); K.box(blk,1.7,.004,.012,0,.835,-.41);   // rounded edges give the soft-touch look
+  K.box(trim,.7,.26,.02,-.45,.58,-.445); K.box(chrome,.12,.012,.015,-.45,.68,-.43);    // glove box + handle
+  K.box(trim,.4,.2,.03,.4,.55,-.44); K.box(dash2,.16,.14,.2,.37,.78,-.26);             // driver knee panel, steering column shroud
+  // --- passenger-side wide screen: a piano-black pod set into the dash, with a chrome-framed corner vent beside it ---
+  K.geo(RB(.5,.2,.042,.02),piano,-.54,.885,-.41);                  // pod front face at z=-.389: the (slightly tilted) screen plane must stay in front of it everywhere
+  K.geo(RB(.09,.15,.04,.015),silver,-.84,.86,-.425); K.box(blk,.065,.115,.01,-.84,.86,-.402);          // corner vent: silver frame, black inside
+  for(let i=-1;i<=1;i++) K.box(trim,.004,.11,.012,-.84+i*.016,.86,-.397); K.box(chrome,.012,.03,.016,-.84,.86,-.393);   // vertical louvres + the vane knob
+  // --- the silver "wing": one brushed-silver panel holding the two wide vents (hazard button between them) and the climate panel ---
+  K.geo(RB(.6,.3,.06,.028),silver,-.04,.8,-.43);
+  for(const x of [-.165,.085]){ K.box(blk,.19,.062,.01,x,.895,-.398); for(let i=-2;i<=2;i++) K.box(trim,.17,.004,.012,x,.895+i*.011,-.395); K.box(chrome,.035,.008,.014,x,.895,-.392); }   // wide horizontal vents
+  K.geo(RB(.38,.14,.012,.014),piano,-.04,.745,-.399);                                                  // climate panel (knobs, buttons, display sit on this)
+  // --- instrument binnacle behind the wheel: piano-black housing with a hood over it ---
+  K.geo(RB(.31,.15,.06,.025),piano,.37,.995,-.52); K.geo(RB(.34,.03,.14,.012),dash2,.37,1.09,-.46);
+  // --- start button (left of the steering column), indicator + wiper stalks ---
+  K.cyl(silver,.022,.012,.19,.735,-.4,Math.PI/2); K.cyl(blk,.015,.014,.19,.735,-.396,Math.PI/2);
+  K.cyl(blk,.007,.1,.31,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.011,.025,.255,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.007,.1,.43,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.011,.025,.485,.84,-.2,0,0,Math.PI/2);
+  if(!live){                                                         // static look-alikes for the inspection model (live cabins get real, clickable versions from buildDashUI)
+    K.box(scr,.42,.131,.006,-.54,.885,-.376,0,.06); [basic(0xd9a21b),basic(0x2f6fbf),basic(0x2aa6a0)].forEach((m,i)=>K.box(m,.11,.1,.004,-.66+i*.12,.885,-.372,0,.06));
+    K.box(scr,.26,.125,.006,.37,.995,-.489); K.box(red,.04,.05,.012,-.04,.895,-.39);
+    for(const x of [-.18,.10]) K.cyl(chrome,.028,.03,x,.745,-.383,Math.PI/2);
+    for(let i=0;i<4;i++){ K.box(chrome,.038,.032,.012,-.1075+i*.045,.785,-.391); K.box(chrome,.038,.03,.012,-.1075+i*.045,.705,-.391); }
+    K.box(lcd,.15,.0375,.004,-.04,.745,-.395); K.cyl(blk,.012,.1,0,.72,-.12); K.cyl(leather,.027,.05,0,.78,-.12);
+    for(let i=0;i<4;i++) K.box(chrome,.05,.04,.012,-.1+i*.0667,.661,.03); K.cyl(chrome,.026,.02,-.135,.668,-.22); }
   // --- pedals (brake, accelerator, dead pedal) ---
   K.box(chrome,.09,.012,.15,.31,.52,-.36,.6); K.box(chrome,.07,.012,.14,.46,.52,-.36,.6); K.box(chrome,.16,.012,.16,.13,.5,-.3,.5);
-  // --- centre console: gear lever with chrome ring, button rows, cup holders, grey armrest, rear vents ---
-  K.box(dash2,.34,.2,1.0,0,.545,.15); K.box(blk,.3,.01,.34,0,.645,-.13);
-  K.cyl(chrome,.05,.012,0,.655,-.1);
-  if(!live){ K.cyl(blk,.012,.1,0,.7,-.1); K.cyl(blk,.027,.05,0,.75,-.1); for(let i=0;i<4;i++) K.box(chrome,.03,.008,.03,-.1+i*.067,.65,-.25); }
-  for(const x of [-.07,.07]) K.cyl(blk,.04,.012,x,.648,.1); K.box(fab,.3,.1,.34,0,.69,.5); K.box(fabL,.26,.012,.3,0,.745,.5);
+  // --- centre console: brushed-silver top panel with the gear lever's chrome-ringed boot, cup holders + USB, leather armrest ---
+  K.box(dash2,.36,.2,1.0,0,.545,.15); K.box(silver,.32,.01,.42,0,.65,-.1);
+  K.cyl(chrome,.052,.012,0,.658,-.12); K.geo(new THREE.CylinderGeometry(.022,.04,.05,16),leatherL,0,.683,-.12);   // lever boot
+  for(const x of [-.07,.07]){ K.cyl(blk,.04,.012,x,.648,.22); K.cyl(trim,.044,.006,x,.65,.22); }              // cup holders
+  K.box(blk,.07,.012,.03,0,.652,.15); K.box(chrome,.012,.008,.02,-.015,.657,.15); K.box(chrome,.012,.008,.02,.015,.657,.15);   // USB ports
+  K.box(leather,.3,.1,.34,0,.69,.55); K.box(leatherL,.26,.012,.3,0,.745,.55);
   K.box(blk,.16,.04,.02,0,.55,.66);
-  // --- seat factory: one function, called 5 times ---
+  // --- seat factory: one function, called 5 times (dark leather, lighter perforated centre) ---
   const seat=(x,z,y)=>{ K.box(fab,.5,.12,.56,x,y,z); K.box(fabL,.3,.01,.5,x,y+.066,z);
     K.box(fab,.5,.62,.14,x,y+.4,z+.31,.12); K.box(fabL,.3,.5,.01,x,y+.4,z+.237,.12);
     for(const s of [-1,1]) K.box(fab,.07,.5,.16,x+s*.215,y+.38,z+.28,.12);
     K.box(fab,.26,.2,.1,x,y+.82,z+.36,.12); for(const s of [-1,1]) K.box(blk,.02,.1,.02,x+s*.07,y+.7,z+.34,.12); };
   seat(-.37,.35,.52); seat(.37,.35,.52);                            // front: passenger (-x), driver (+x)
   if(full) for(const x of [-.46,0,.46]) seat(x,1.3,.55);            // rear: left, middle, right
-  // --- TRIM GROUP: pillars, door cards, mirrors, roof, sunroof. These sit exactly where the exterior panels are, so they are
+  // --- TRIM GROUP: pillars, door cards, roof. These sit exactly where the exterior panels are, so they are
   //     hidden whenever the outside shell is visible (otherwise they poke through the paint = the clipping bug) ---
   const tg=new THREE.Group(), K2=builder(tg); g.add(tg);
-  for(const s of [-1,1]){ K2.box(trim,.08,.8,.1,s*.87,1.265,-.7,.67);
-    K2.box(trim,.07,.45,1.15,s*.9,.62,.08); K2.box(dash2,.08,.1,1.15,s*.9,.92,.08); K2.box(fab,.03,.14,.9,s*.855,.7,.12);
-    K2.box(chrome,.025,.03,.2,s*.85,.88,.2); K2.box(glow,.012,.01,.9,s*.862,.78,.1);
-    }
-  K2.box(blk,.03,.06,.15,.85,.82,.35);                               // driver window switches
+  for(const s of [-1,1]){ K2.box(trim,.08,.8,.1,s*.87,1.265,-.7,.67); K2.geo(RB(.035,.045,.26,.012),dash2,s*.83,1.22,-.66,.67);   // A-pillar + its grab handle
+    K2.box(trim,.07,.45,1.15,s*.9,.62,.08); K2.box(dash2,.08,.1,1.15,s*.9,.92,.08); K2.box(leather,.03,.14,.9,s*.855,.7,.12);   // door card, sill, insert
+    K2.box(silver,.012,.012,.9,s*.862,.8,.1); K2.box(chrome,.025,.03,.2,s*.85,.88,.2); }                                         // thin silver strip along the door + handle
+  K2.box(piano,.03,.06,.15,.85,.82,.35);                             // driver window switches
   if(full){
     for(const s of [-1,1]){ K2.box(trim,.07,.9,.1,s*.9,1.1,.62);     // B-pillars
-      K2.box(trim,.07,.42,1.0,s*.9,.62,1.2); K2.box(dash2,.08,.1,1.0,s*.9,.9,1.2); K2.box(fab,.03,.14,.8,s*.855,.7,1.2);
-      K2.box(chrome,.025,.03,.18,s*.85,.86,1.15); K2.box(glow,.012,.01,.8,s*.862,.78,1.2);
+      K2.box(trim,.07,.42,1.0,s*.9,.62,1.2); K2.box(dash2,.08,.1,1.0,s*.9,.9,1.2); K2.box(leather,.03,.14,.8,s*.855,.7,1.2);
+      K2.box(silver,.012,.012,.8,s*.862,.8,1.2); K2.box(chrome,.025,.03,.18,s*.85,.86,1.15);
       K2.box(trim,.025,.025,.16,s*.8,1.55,.2); K2.box(trim,.025,.025,.16,s*.8,1.55,1.45);          // grab handles
       K2.box(head,.22,.04,1.0,s*.69,1.6,.5); K2.box(head,.32,.02,.2,s*.4,1.575,-.43); }            // roof side strips, sun visors
-    K2.box(head,1.6,.04,.35,0,1.6,-.45); K2.box(head,1.6,.04,.5,0,1.6,1.55);                        // roof front/rear
-    K2.box(glass,1.16,.012,1.55,0,1.605,.5125); K2.box(blk,1.2,.04,.03,0,1.6,-.27); K2.box(blk,1.2,.04,.03,0,1.6,1.3);  // PANORAMIC SUNROOF
-    K2.box(trim,.3,.045,.15,0,1.575,-.5); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.5); K2.box(blk,.025,.006,.02,s*.05,1.552,-.46); }
-    K2.cyl(red,.013,.008,0,1.552,-.46); K2.box(blk,.13,.05,.07,0,1.52,-.57);                        // overhead console: SOS button, map lights, camera
-    
+    K2.box(head,1.6,.04,.35,0,1.6,-.45); K2.box(head,1.6,.04,.5,0,1.6,1.55); K2.box(head,1.16,.04,1.55,0,1.6,.5125);   // plain dark headliner (no sunroof in this interior)
+    K2.geo(RB(.3,.045,.15,.015),trim,0,1.575,-.5); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.5); K2.box(blk,.025,.006,.02,s*.05,1.552,-.46); }
+    K2.cyl(red,.013,.008,0,1.552,-.46); K2.box(blk,.13,.05,.07,0,1.52,-.57);                        // overhead console: SOS button, map lights, camera housing
   }
   K2.done();
   K.done();
-  // --- steering wheel: its own group so it can turn as you steer ---
-  const tilt=new THREE.Group(); tilt.position.set(.37,.92,-.1); tilt.rotation.x=-.5; g.add(tilt);
+  // --- steering wheel: its own group so it can turn as you steer (thick dark leather rim, rectangular badge, silver-edged spokes) ---
+  const tilt=new THREE.Group(); tilt.position.set(.37,.93,-.1); tilt.rotation.x=-.42; g.add(tilt);
   const wheel=new THREE.Group(); tilt.add(wheel); const KW=builder(wheel);
-  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.185,.02,12,40),M(0x0c0d0f,.5)));
-  KW.box(blk,.1,.075,.04,0,0,.005); KW.box(chrome,.055,.012,.006,0,0,.027);                     // hub + emblem
-  for(const s of [-1,1]){ KW.box(chrome,.15,.045,.018,s*.105,-.015,0); KW.box(blk,.055,.032,.006,s*.11,-.01,.012); }  // spokes + button pads
-  KW.box(chrome,.035,.1,.018,0,-.1,0); KW.done();
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.178,.023,12,44),M(0x1a1b1d,.6)));
+  KW.geo(RB(.105,.09,.045,.03),dash2,0,0,.005); KW.box(silver,.065,.014,.006,0,.012,.03);          // hub + rectangular badge plate
+  for(const s of [-1,1]){ KW.box(dash2,.14,.04,.02,s*.1,-.04,0); KW.box(silver,.13,.006,.022,s*.1,-.063,0); KW.box(piano,.055,.055,.008,s*.115,-.025,.014); }   // side spokes, silver lower edge, button pads
+  KW.box(dash2,.07,.115,.02,0,-.105,0); KW.box(silver,.006,.1,.022,-.034,-.105,0); KW.box(silver,.006,.1,.022,.034,-.105,0); KW.done();   // chunky bottom spoke with silver edges
   if(live) buildDashUI(g);                                          // interactive screens, needle, buttons, knobs
   return {g,wheel,trim:tg}; }
 
@@ -400,49 +399,48 @@ const IC={                                                          // tiny butt
   heat:x=>{ rr(x,14,10,18,36,6,'#fff'); rr(x,14,38,34,12,5,'#fff'); x.strokeStyle='#ff8a3a'; x.lineWidth=3; for(const px of [40,48,56]){ x.beginPath(); x.moveTo(px,6); x.bezierCurveTo(px-6,14,px+6,22,px,30); x.stroke(); } },
   vent:x=>{ rr(x,14,10,18,36,6,'#fff'); rr(x,14,38,34,12,5,'#fff'); x.strokeStyle='#4fb8ff'; x.lineWidth=3; for(const px of [40,48,56]){ x.beginPath(); x.moveTo(px,6); x.lineTo(px,30); x.stroke(); } },
   letter:(x,ch)=>tx(x,ch,32,34,46) };
-function buildDashUI(g){                                            // creates every interactive part of the dashboard inside group g
+function buildDashUI(g){                                            // creates every interactive part of the dashboard inside group g (same functions as before; only the layout changed)
   const flat=(t,w,h,X,Y,Z,ry=0,alpha=false)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t,toneMapped:false,transparent:alpha})); m.position.set(X,Y,Z); m.rotation.y=ry; g.add(m); return m; };
   const reg=(o,name,need,fn,adj=false,noScale=false)=>{ o.userData.act={name,need,fn,adj}; o.userData.noScale=noScale; UI.hot.push(o); return o; };   // need: 'front' (both front seats) or 'driver'
   const icon=draw=>{ const c=canv(64,64); draw(c.x); return c.t; };
-  const metal=M(0xc2c5c9,.25,.9);
+  const metal=M(0xcdd0d4,.25,.9);
   const mkBtn=(X,Y,Z,w,h,tex,col,rx=0)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,Z); grp.rotation.x=rx; g.add(grp);
     const face=new THREE.Mesh(new THREE.BoxGeometry(w,h,.012),new THREE.MeshStandardMaterial({color:col,roughness:.4,metalness:.5})); grp.add(face);
     const sz=Math.min(w,h)*.8, p=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false})); p.position.z=.0065; grp.add(p); return {grp,face}; };
-  // central touchscreen (a click on it is converted from UV to canvas pixels and matched against UI.regions)
+  // central touchscreen, now on the passenger side of the dash (a click is converted from UV to canvas pixels and matched against UI.regions)
   UI.screen=canv(SW,SH);
-  reg(flat(UI.screen.t,.4,.125,-.03,1.04,-.4715,.1),'Touchscreen','front',(d,uv)=>{ if(DS.page==='off'){ setPage('home'); return; }          // touching a dark screen wakes it
+  reg(flat(UI.screen.t,.42,.131,-.54,.885,-.375,.06),'Touchscreen','front',(d,uv)=>{ if(DS.page==='off'){ setPage('home'); return; }          // touching a dark screen wakes it
     const px=uv.x*SW, py=(1-uv.y)*SH;
     for(const r of UI.regions) if(px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h){ r.fn(d); break; } },false,true);
-  // instrument cluster + speedometer needle (a thin bar on a pivot; rotated every frame from the car's speed)
-  UI.cluster=canv(256,160); flat(UI.cluster.t,.26,.125,.34,1.04,-.4895);
-  const nd=new THREE.Group(); nd.position.set(.281,1.04,-.4875); g.add(nd);
+  // instrument cluster in its hooded binnacle + speedometer needle (a thin bar on a pivot; rotated every frame from the car's speed)
+  UI.cluster=canv(256,160); flat(UI.cluster.t,.26,.125,.37,.995,-.4885);
+  const nd=new THREE.Group(); nd.position.set(.311,.995,-.4865); g.add(nd);
   nd.add(new THREE.Mesh(new THREE.BoxGeometry(.004,.05,.002).translate(0,.025,0),new THREE.MeshBasicMaterial({color:0xff4a2a,toneMapped:false})));
   nd.add(new THREE.Mesh(new THREE.CircleGeometry(.006,12),new THREE.MeshBasicMaterial({color:0xdddddd,toneMapped:false})).translateZ(.0012));
   UI.needle=nd; nd.rotation.z=UI.needleA;
-  // 4 buttons under the screen + the red HAZARD button in the middle
-  const row=[['Home',IC.home,()=>setPage('home')],['Navigation',IC.nav,()=>setPage('nav')],null,['Climate control',IC.fan,()=>setPage('climate')],['Screen OFF',IC.off,()=>setPage('off')]];
-  [-.18,-.09,0,.09,.18].forEach((X,i)=>{ const r=row[i];
-    if(!r){ const b=mkBtn(X,.8,-.405,.065,.04,icon(IC.haz),0xb02010); UI.hazMat=b.face.material; reg(b.grp,'Hazard / emergency lights','front',toggleHazard); return; }
-    reg(mkBtn(X,.8,-.405,.065,.04,icon(r[1]),0x1c1d20).grp,r[0],'front',r[2]); });
-  // physical climate controls: passenger temp (left), driver temp (right), fan, seat heat/vent buttons with LEDs
-  const knob=(X,Y,r,name,fn)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,-.405); g.add(grp);
+  // the climate panel: top row = Home / Navigation / Climate control / Screen OFF; the red HAZARD button sits between the two wide vents
+  const row=[['Home',IC.home,()=>setPage('home')],['Navigation',IC.nav,()=>setPage('nav')],['Climate control',IC.fan,()=>setPage('climate')],['Screen OFF',IC.off,()=>setPage('off')]];
+  [-.1075,-.0625,-.0175,.0275].forEach((X,i)=>{ const r=row[i]; reg(mkBtn(X,.785,-.391,.038,.032,icon(r[1]),0x1c1d20).grp,r[0],'front',r[2]); });
+  { const b=mkBtn(-.04,.895,-.391,.04,.05,icon(IC.haz),0xb02010); UI.hazMat=b.face.material; reg(b.grp,'Hazard / emergency lights','front',toggleHazard); }
+  // physical climate controls: passenger temp (left knob), driver temp (right knob), seat heat/vent buttons with LEDs; the fan dial is the rotary on the console
+  const knob=(X,Y,Z,r,name,fn,rx=0)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,Z); grp.rotation.x=rx; g.add(grp);        // rx=-90deg stands the knob upright on the console
     const c=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.03,20),metal); c.rotation.x=Math.PI/2; grp.add(c);
     const m=new THREE.Mesh(new THREE.BoxGeometry(.005,r*.6,.002),new THREE.MeshBasicMaterial({color:0xff4a2a})); m.position.set(0,r*.55,.0165); grp.add(m);
     return reg(grp,name,'front',fn,true); };
-  UI.kn={P:knob(-.15,.70,.03,'Passenger temperature',d=>adjT('P',d)), D:knob(.15,.70,.03,'Driver temperature',d=>adjT('D',d)), F:knob(0,.65,.02,'AC fan speed',adjF)};
-  UI.lcd=canv(192,48); flat(UI.lcd.t,.12,.03,0,.70,-.408);
-  const seatBtn=(X,key)=>{ const kind=key[0], side=key[1], b=mkBtn(X,.65,-.405,.045,.03,icon(kind==='h'?IC.heat:IC.vent),0x1c1d20);
-    const led=new THREE.Mesh(new THREE.BoxGeometry(.03,.006,.002),new THREE.MeshBasicMaterial({color:0x2a2a2a})); led.position.set(X,.674,-.4); g.add(led); UI.leds[key]=led.material;
+  UI.kn={P:knob(-.18,.745,-.383,.028,'Passenger temperature',d=>adjT('P',d)), D:knob(.10,.745,-.383,.028,'Driver temperature',d=>adjT('D',d)), F:knob(-.135,.668,-.22,.026,'AC fan speed (console dial)',adjF,-Math.PI/2)};
+  UI.lcd=canv(192,48); flat(UI.lcd.t,.15,.0375,-.04,.745,-.389);
+  const seatBtn=(X,key)=>{ const kind=key[0], side=key[1], b=mkBtn(X,.705,-.391,.038,.03,icon(kind==='h'?IC.heat:IC.vent),0x1c1d20);
+    const led=new THREE.Mesh(new THREE.BoxGeometry(.03,.006,.002),new THREE.MeshBasicMaterial({color:0x2a2a2a})); led.position.set(X,.683,-.389); g.add(led); UI.leds[key]=led.material;
     reg(b.grp,(side==='D'?'Driver':'Passenger')+(kind==='h'?' seat heating':' seat ventilation'),'front',d=>adjS(kind,side,d),true); };
-  seatBtn(-.12,'hP'); seatBtn(-.06,'vP'); seatBtn(.06,'vD'); seatBtn(.12,'hD');
-  // driving-mode selector: P R N D buttons on the console (driver only) + a lever that tilts to match
-  GEARS.forEach((G,i)=>{ const b=mkBtn(-.1+i*.0667,.651,-.25,.05,.04,icon(x=>IC.letter(x,G)),0x1c1d20,-Math.PI/2); UI.gb[G]=b.face.material;
+  seatBtn(-.1075,'hP'); seatBtn(-.0625,'vP'); seatBtn(-.0175,'vD'); seatBtn(.0275,'hD');
+  // driving-mode selector: P R N D buttons on the silver console panel (driver only) + a lever that tilts to match
+  GEARS.forEach((G,i)=>{ const b=mkBtn(-.1+i*.0667,.661,.03,.05,.04,icon(x=>IC.letter(x,G)),0x1c1d20,-Math.PI/2); UI.gb[G]=b.face.material;
     reg(b.grp,'Gear '+{P:'Park',R:'Reverse',N:'Neutral',D:'Drive'}[G],'driver',()=>setGear(G)); });
-  const lv=new THREE.Group(); lv.position.set(0,.655,-.1); g.add(lv);
-  lv.add(new THREE.Mesh(new THREE.BoxGeometry(.016,.1,.016).translate(0,.05,0),M(0x050607,.3,.3))); lv.add(new THREE.Mesh(new THREE.CylinderGeometry(.027,.027,.05,16).translate(0,.105,0),M(0x0a0a0b,.4,.3)));
+  const lv=new THREE.Group(); lv.position.set(0,.67,-.12); g.add(lv);
+  lv.add(new THREE.Mesh(new THREE.BoxGeometry(.018,.075,.018).translate(0,.0375,0),M(0x0a0a0b,.3,.3))); lv.add(new THREE.Mesh(new THREE.CylinderGeometry(.024,.028,.05,16).translate(0,.08,0),M(0x1b1c1e,.5,.2)));
   UI.lever=lv;
   // floating tooltip above the screen (works in VR too, where there is no mouse cursor)
-  UI.tip=canv(512,48); UI.tipMesh=flat(UI.tip.t,.34,.032,.12,1.2,-.49,0,true); UI.tipMesh.visible=false; UI.tipMesh.material.depthTest=false; UI.tipMesh.renderOrder=10; }
+  UI.tip=canv(512,48); UI.tipMesh=flat(UI.tip.t,.34,.032,-.54,1.06,-.36,0,true); UI.tipMesh.visible=false; UI.tipMesh.material.depthTest=false; UI.tipMesh.renderOrder=10; }
 
 /* ---------- 7. CAR FACTORY: Kia Seltos 2026 exterior (used for the player's SUV and all traffic) ---------- */
 // SMOOTHNESS: panels are RoundedBoxGeometry (boxes with soft, curved edges) instead of sharp boxes.
