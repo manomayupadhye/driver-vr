@@ -14,25 +14,25 @@ Everything lives in **one self-contained `index.html`**: markup, CSS and JavaScr
 ## Features
 
 **Driving and walking**
-- Right-hand-drive compact SUV with a 5-seat cabin. Drive from seat 1, or teleport between seats with keys 1 to 5.
+- Right-hand-drive compact SUV with a 5-seat cabin and a dark, soft-touch interior: a brushed-silver "wing" across the dash holding two wide vents (with the hazard button between them) and the climate panel, a wide screen with a chrome corner vent on the passenger side, a hooded instrument binnacle, a thick dark steering wheel, a silver console with a leather-boot gear lever and a rotary dial, cup holders and dark leather seats. Drive from seat 1, or teleport between seats with keys 1 to 5.
 - Gears **P / R / N / D**. The car starts in Park; select D on the console to drive.
 - Top speed **185 km/h**. Steering angle shrinks with speed so cornering stays believable.
 - First and third person, walking on foot, and getting in and out of the car.
 
 **Interactive dashboard** (mouse and VR controllers)
 - Speedometer whose hand follows your real speed.
-- 4-button central screen: **Home**, **Navigation** (live low-res map with a "you are here" marker), **Climate Control**, **Screen OFF**.
+- 4-button central screen, the buttons sitting in the top row of the climate panel: **Home**, **Navigation** (live low-res map with a "you are here" marker), **Climate Control**, **Screen OFF**.
 - Climate control: A/C fan speed, driver and passenger temperature, and seat heating and ventilation for both front seats. Also available through physical knobs and buttons, which share the same state as the touchscreen.
 - **Emergency (hazard) button**: blinks the tail lamps and indicators, ticks, and flashes the cluster arrows.
 - Screen and climate controls work from both front seats. The gear selector only works from the driver seat.
 
 **World and traffic**
 - An 8-lane highway that **winds through real bends**: it starts straight, then curves gently left and right (tightest bend about 385 m radius), so you have to steer. Dashed lane lines, a kerbed median and roadside trees all follow the curve.
-- A proper landscape: a flat plain beside the road, rolling hills, foothills with **pine forest**, and three layers of **distant mountains** fading into winter haze. Thin clouds and a low morning sun.
+- A proper landscape: a level verge beside the road, then hills and mountain slopes you can **drive up (to 50 m of elevation)**. The car follows the ground, tilts with the slope, slows when climbing and speeds up rolling downhill, and the camera rides with it. Pine forest grows on the slopes (the trees you can reach are solid), and three layers of **distant mountains** fade into winter haze.
 - Traffic keeps its distance, signals before changing lane (blinking indicator), and slows for slower cars ahead.
 - **Traffic signals** every 400 m: traffic stops on the line at red. Running a red costs a fine.
 - **Speed cameras** every 700 m with a flash. Over the limit means a fine and police dispatched behind you.
-- **Highway police** patrol your carriageway and start a chase if they see you above 100 km/h. They have a flashing light bar and a siren. Outrun them at high speed, or stop beside them to be busted.
+- **Highway police** patrol your carriageway and start a chase if they see you above 100 km/h. They have a flashing light bar and a siren. Outrun them at high speed, or stop beside them to be busted. **Each bust has a 1 in 10 chance that the police impound your car and the game is over** (restart with `R`, a click, or the VR trigger).
 - The central median is a normal drivable strip (rough, with solid shrubs), not an invisible wall.
 
 **Physics**
@@ -108,7 +108,7 @@ Everything is in `index.html`, in numbered, commented sections, so you can read 
 | 1 | Renderer, camera rig, fog (ACES tone mapping, soft shadows, `local-floor` for VR) |
 | 2 to 3 | Helpers, sky, sun and clouds |
 | 4 | **The curved road**: the centre-line maths (`roadAt`, `worldToRoad`) and the road surface ribbons |
-| 5 | Terrain, pine forest, backdrop mountains, and the **instanced roadside trees** |
+| 5 | Terrain (with `groundY`, the exact ground height under any point), pine forest, backdrop mountains, and the **instanced roadside trees** |
 | 6 | **Cabin factory** and the live dashboard (canvas-texture screens, knobs, buttons) |
 | 7 | **Car factory** (exterior, wheels, lights) and the police variant |
 | 8 | The player's car, traffic, inspection pedestal, and the pooled signals and cameras |
@@ -136,7 +136,7 @@ Built with the Meta Quest 2 in mind: distant scenery is cheap and non-collidable
 
 ## Known limitations
 
-- Collision is 2D (cars cannot roll or tip) and the road itself is flat: there are bends but no climbs or dips. The hills are scenery beside a flat plain, and a soft wall keeps you within about 66 m of the road.
+- Collision is 2D (cars cannot roll or tip) and the road itself is flat: there are bends but no climbs or dips. You can drive up to 50 m of elevation and within 300 m of the road; past that a soft wall puts you back. In VR the camera only rises and falls with the ground (it does not tilt, to avoid motion sickness).
 - The car is a stylised, approximate shape, not an exact scale model.
 - All traffic signals share one colour at a time; police only patrol your carriageway.
 - Fines do not end the game.
