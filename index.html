@@ -215,8 +215,11 @@ function builder(g){
 function makeCockpit(full=true,live=true){                          // full=false: front half only; live=false: static look-alike (inspection model)
   const g=new THREE.Group(), K=builder(g);
   // MATERIALS: charcoal soft-touch dash, piano-black glass surrounds, brushed-silver trim, dark leather
-  const dash=M(0x2b2c30,.85), dash2=M(0x1e1f22,.85), trim=M(0x34363b,.8), blk=M(0x050607,.25,.3), piano=M(0x090a0c,.15,.5),
-    silver=M(0xb9bcc0,.4,.7), chrome=M(0xcdd0d4,.25,.9), leather=M(0x202124,.6), leatherL=M(0x2f3136,.75), head=M(0x2d2e32,.95), carpet=M(0x151517,1),
+  // INTERIOR MATERIALS. The sun barely reaches a cabin (the dash faces away from it), so real-looking greys would render nearly BLACK. Each interior material therefore
+  // also gets a little self-illumination (emissive = k x its own colour): a cheap stand-in for light bouncing around inside the car.
+  const IM=(c,r=.8,m=0,k=.5)=>{ const mat=M(c,r,m); mat.emissive=new THREE.Color(c).multiplyScalar(k); return mat; };
+  const dash=IM(0x4a4c52,.85), dash2=IM(0x383a3f,.85), trim=IM(0x4c4e54,.8), blk=IM(0x0a0b0d,.3,.2,.3), piano=IM(0x14151a,.15,.4,.35),
+    silver=IM(0xc2c5c9,.4,.25,.55), chrome=IM(0xd6d9dd,.25,.4,.55), leather=IM(0x2a2b2f,.6), leatherL=IM(0x3a3c41,.75), head=IM(0x5a5c62,.95), carpet=IM(0x2a2b2e,1),
     red=basic(0xff2a1a), lamp=basic(0xfff4d0), scr=basic(0x0b1722), lcd=basic(0x9fe0ff), RB=(w,h,d,r)=>new RoundedBoxGeometry(w,h,d,3,r);
   const fab=leather, fabL=leatherL;
   K.box(carpet,1.7,.04,2.6,0,.47,.5);                                // floor
@@ -233,13 +236,13 @@ function makeCockpit(full=true,live=true){                          // full=fals
   for(const x of [-.165,.085]){ K.box(blk,.19,.062,.01,x,.895,-.398); for(let i=-2;i<=2;i++) K.box(trim,.17,.004,.012,x,.895+i*.011,-.395); K.box(chrome,.035,.008,.014,x,.895,-.392); }   // wide horizontal vents
   K.geo(RB(.38,.14,.012,.014),piano,-.04,.745,-.399);                                                  // climate panel (knobs, buttons, display sit on this)
   // --- instrument binnacle behind the wheel: piano-black housing with a hood over it ---
-  K.geo(RB(.31,.15,.06,.025),piano,.37,.995,-.52); K.geo(RB(.34,.03,.14,.012),dash2,.37,1.09,-.46);
+  K.geo(RB(.33,.2,.1,.04),dash2,.37,1.045,-.54); K.geo(RB(.35,.035,.15,.015),dash2,.37,1.16,-.47);        // binnacle: a housing that rises out of the dash top, with a hood over the cluster
   // --- start button (left of the steering column), indicator + wiper stalks ---
   K.cyl(silver,.022,.012,.19,.735,-.4,Math.PI/2); K.cyl(blk,.015,.014,.19,.735,-.396,Math.PI/2);
   K.cyl(blk,.007,.1,.31,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.011,.025,.255,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.007,.1,.43,.84,-.2,0,0,Math.PI/2); K.cyl(blk,.011,.025,.485,.84,-.2,0,0,Math.PI/2);
   if(!live){                                                         // static look-alikes for the inspection model (live cabins get real, clickable versions from buildDashUI)
     K.box(scr,.42,.131,.006,-.54,.885,-.376,0,.06); [basic(0xd9a21b),basic(0x2f6fbf),basic(0x2aa6a0)].forEach((m,i)=>K.box(m,.11,.1,.004,-.66+i*.12,.885,-.372,0,.06));
-    K.box(scr,.26,.125,.006,.37,.995,-.489); K.box(red,.04,.05,.012,-.04,.895,-.39);
+    K.box(scr,.26,.125,.006,.37,1.075,-.489); K.box(red,.04,.05,.012,-.04,.895,-.39);
     for(const x of [-.18,.10]) K.cyl(chrome,.028,.03,x,.745,-.383,Math.PI/2);
     for(let i=0;i<4;i++){ K.box(chrome,.038,.032,.012,-.1075+i*.045,.785,-.391); K.box(chrome,.038,.03,.012,-.1075+i*.045,.705,-.391); }
     K.box(lcd,.15,.0375,.004,-.04,.745,-.395); K.cyl(blk,.012,.1,0,.72,-.12); K.cyl(leather,.027,.05,0,.78,-.12);
@@ -260,29 +263,38 @@ function makeCockpit(full=true,live=true){                          // full=fals
     K.box(fab,.26,.2,.1,x,y+.82,z+.36,.12); for(const s of [-1,1]) K.box(blk,.02,.1,.02,x+s*.07,y+.7,z+.34,.12); };
   seat(-.37,.35,.52); seat(.37,.35,.52);                            // front: passenger (-x), driver (+x)
   if(full) for(const x of [-.46,0,.46]) seat(x,1.3,.55);            // rear: left, middle, right
-  // --- TRIM GROUP: pillars, door cards, roof. These sit exactly where the exterior panels are, so they are
-  //     hidden whenever the outside shell is visible (otherwise they poke through the paint = the clipping bug) ---
+  // --- TRIM GROUP: pillars, door cards, headliner. They sit just INSIDE the outer body panels (doors x<=.85, outer pillars x>=.755, roof underside y<=1.63),
+  //     so they are shown together with the outside shell without overlap or flicker, and are visible from outside through the glass. ---
+  // PILLARS lie on the SAME LINES as the outside pillars (just inboard of them), are 9 cm wide like real trimmed pillars, and each runs UP INTO the headliner.
+  // The HEADLINER is ONE continuous panel whose edges line up with the pillars' outer edge (x=.755) and with the top of the windscreen (z=-.5).
   const tg=new THREE.Group(), K2=builder(tg); g.add(tg);
-  for(const s of [-1,1]){ K2.box(trim,.08,.8,.1,s*.87,1.265,-.7,.67); K2.geo(RB(.035,.045,.26,.012),dash2,s*.83,1.22,-.66,.67);   // A-pillar + its grab handle
-    K2.box(trim,.07,.45,1.15,s*.9,.62,.08); K2.box(dash2,.08,.1,1.15,s*.9,.92,.08); K2.box(leather,.03,.14,.9,s*.855,.7,.12);   // door card, sill, insert
-    K2.box(silver,.012,.012,.9,s*.862,.8,.1); K2.box(chrome,.025,.03,.2,s*.85,.88,.2); }                                         // thin silver strip along the door + handle
-  K2.box(piano,.03,.06,.15,.85,.82,.35);                             // driver window switches
+  const pil=(s,x,cy,cz,len,rx)=>K2.box(trim,.09,len,.1,s*x,cy,cz,rx);
+  for(const s of [-1,1]){
+    pil(s,.71,1.323,-.70,.92,.745);                                  // A-pillar: the windscreen's slope (.745 rad), from the dash up into the headliner
+    K2.geo(RB(.03,.26,.03,.012),dash2,s*.71,1.269,-.641,.745);       // grab-handle rail, parallel to the pillar...
+    K2.box(dash2,.03,.03,.06,s*.71,1.3417,-.5875,.745); K2.box(dash2,.03,.03,.06,s*.71,1.2093,-.7095,.745);   // ...held on two mounts (before it floated as a loose stick)
+    K2.box(trim,.06,.45,1.15,s*.82,.62,.08); K2.box(dash2,.07,.1,1.15,s*.815,.92,.08); K2.box(leather,.03,.14,.9,s*.79,.7,.12);   // front door card, sill, insert (inside the door panel)
+    K2.box(silver,.012,.012,.9,s*.795,.8,.1); K2.box(chrome,.025,.03,.2,s*.79,.88,.2); }                                          // thin silver strip along the door + handle
+  K2.box(piano,.03,.06,.15,.79,.82,.35);                             // driver window switches
   if(full){
-    for(const s of [-1,1]){ K2.box(trim,.07,.9,.1,s*.9,1.1,.62);     // B-pillars
-      K2.box(trim,.07,.42,1.0,s*.9,.62,1.2); K2.box(dash2,.08,.1,1.0,s*.9,.9,1.2); K2.box(leather,.03,.14,.8,s*.855,.7,1.2);
-      K2.box(silver,.012,.012,.8,s*.862,.8,1.2); K2.box(chrome,.025,.03,.18,s*.85,.86,1.15);
-      K2.box(trim,.025,.025,.16,s*.8,1.55,.2); K2.box(trim,.025,.025,.16,s*.8,1.55,1.45);          // grab handles
-      K2.box(head,.22,.04,1.0,s*.69,1.6,.5); K2.box(head,.32,.02,.2,s*.4,1.575,-.43); }            // roof side strips, sun visors
-    K2.box(head,1.6,.04,.35,0,1.6,-.45); K2.box(head,1.6,.04,.5,0,1.6,1.55); K2.box(head,1.16,.04,1.55,0,1.6,.5125);   // plain dark headliner (no sunroof in this interior)
-    K2.geo(RB(.3,.045,.15,.015),trim,0,1.575,-.5); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.5); K2.box(blk,.025,.006,.02,s*.05,1.552,-.46); }
-    K2.cyl(red,.013,.008,0,1.552,-.46); K2.box(blk,.13,.05,.07,0,1.52,-.57);                        // overhead console: SOS button, map lights, camera housing
+    for(const s of [-1,1]){ pil(s,.7,1.1,.62,1.04,0); pil(s,.7,1.1,1.75,1.04,0);                // B- and C-pillars: from the sill up into the headliner
+      K2.box(trim,.06,.42,1.0,s*.82,.62,1.2); K2.box(dash2,.07,.1,1.0,s*.815,.9,1.2); K2.box(leather,.03,.14,.8,s*.79,.7,1.2);
+      K2.box(silver,.012,.012,.8,s*.795,.8,1.2); K2.box(chrome,.025,.03,.18,s*.79,.86,1.15);   // rear door card, sill, insert, strip, handle
+      for(const z of [.2,1.45]){ K2.box(trim,.03,.03,.2,s*.68,1.54,z); K2.box(trim,.03,.05,.03,s*.68,1.565,z-.08); K2.box(trim,.03,.05,.03,s*.68,1.565,z+.08); }   // roof grab handles: a bar held on two mounts that run up into the headliner
+      K2.box(head,.32,.02,.2,s*.4,1.575,-.38);                                                 // sun visors
+      K2.box(trim,.03,.05,2.3,s*.74,1.58,.65); }                                               // trim strip along each roof edge
+    K2.box(head,1.51,.04,2.3,0,1.6,.65);                                                       // ONE continuous headliner, z -.5 to 1.8 (no gaps, no overhang)
+    K2.box(trim,1.51,.05,.035,0,1.58,-.4825);                                                  // trim along the front edge, where the windscreen meets the roof
+    K2.geo(RB(.3,.045,.15,.015),trim,0,1.575,-.36); for(const s of [-1,1]){ K2.box(lamp,.04,.006,.045,s*.08,1.55,-.36); K2.box(blk,.025,.006,.02,s*.05,1.552,-.32); }
+    K2.cyl(red,.013,.008,0,1.552,-.32);                                                        // overhead console: SOS button, map lights
+    K2.box(blk,.13,.06,.08,0,1.55,-.46); K2.box(blk,.025,.025,.124,0,1.485,-.5375,-.7);       // camera housing on the header + the STALK that now holds the mirror (it used to float)
   }
   K2.done();
   K.done();
   // --- steering wheel: its own group so it can turn as you steer (thick dark leather rim, rectangular badge, silver-edged spokes) ---
   const tilt=new THREE.Group(); tilt.position.set(.37,.93,-.1); tilt.rotation.x=-.42; g.add(tilt);
   const wheel=new THREE.Group(); tilt.add(wheel); const KW=builder(wheel);
-  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.178,.023,12,44),M(0x1a1b1d,.6)));
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.178,.023,12,44),IM(0x2c2d31,.6)));
   KW.geo(RB(.105,.09,.045,.03),dash2,0,0,.005); KW.box(silver,.065,.014,.006,0,.012,.03);          // hub + rectangular badge plate
   for(const s of [-1,1]){ KW.box(dash2,.14,.04,.02,s*.1,-.04,0); KW.box(silver,.13,.006,.022,s*.1,-.063,0); KW.box(piano,.055,.055,.008,s*.115,-.025,.014); }   // side spokes, silver lower edge, button pads
   KW.box(dash2,.07,.115,.02,0,-.105,0); KW.box(silver,.006,.1,.022,-.034,-.105,0); KW.box(silver,.006,.1,.022,.034,-.105,0); KW.done();   // chunky bottom spoke with silver edges
@@ -405,7 +417,7 @@ function buildDashUI(g){                                            // creates e
   const icon=draw=>{ const c=canv(64,64); draw(c.x); return c.t; };
   const metal=M(0xcdd0d4,.25,.9);
   const mkBtn=(X,Y,Z,w,h,tex,col,rx=0)=>{ const grp=new THREE.Group(); grp.position.set(X,Y,Z); grp.rotation.x=rx; g.add(grp);
-    const face=new THREE.Mesh(new THREE.BoxGeometry(w,h,.012),new THREE.MeshStandardMaterial({color:col,roughness:.4,metalness:.5})); grp.add(face);
+    const face=new THREE.Mesh(new THREE.BoxGeometry(w,h,.012),new THREE.MeshStandardMaterial({color:col===0x1c1d20?0x50525a:col,roughness:.4,metalness:.2})); grp.add(face);
     const sz=Math.min(w,h)*.8, p=new THREE.Mesh(new THREE.PlaneGeometry(sz,sz),new THREE.MeshBasicMaterial({map:tex,transparent:true,toneMapped:false})); p.position.z=.0065; grp.add(p); return {grp,face}; };
   // central touchscreen, now on the passenger side of the dash (a click is converted from UV to canvas pixels and matched against UI.regions)
   UI.screen=canv(SW,SH);
@@ -413,8 +425,8 @@ function buildDashUI(g){                                            // creates e
     const px=uv.x*SW, py=(1-uv.y)*SH;
     for(const r of UI.regions) if(px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h){ r.fn(d); break; } },false,true);
   // instrument cluster in its hooded binnacle + speedometer needle (a thin bar on a pivot; rotated every frame from the car's speed)
-  UI.cluster=canv(256,160); flat(UI.cluster.t,.26,.125,.37,.995,-.4885);
-  const nd=new THREE.Group(); nd.position.set(.311,.995,-.4865); g.add(nd);
+  UI.cluster=canv(256,160); flat(UI.cluster.t,.26,.125,.37,1.075,-.4885);
+  const nd=new THREE.Group(); nd.position.set(.311,1.075,-.4865); g.add(nd);
   nd.add(new THREE.Mesh(new THREE.BoxGeometry(.004,.05,.002).translate(0,.025,0),new THREE.MeshBasicMaterial({color:0xff4a2a,toneMapped:false})));
   nd.add(new THREE.Mesh(new THREE.CircleGeometry(.006,12),new THREE.MeshBasicMaterial({color:0xdddddd,toneMapped:false})).translateZ(.0012));
   UI.needle=nd; nd.rotation.z=UI.needleA;
@@ -446,8 +458,8 @@ function buildDashUI(g){                                            // creates e
 // SMOOTHNESS: panels are RoundedBoxGeometry (boxes with soft, curved edges) instead of sharp boxes.
 // Everything is merged per material (paint, black plastic, silver, glass, lights) so each car is only ~6 meshes + 4 wheels.
 const BLK=M(0x0b0c0e,.45,.2), SIL=M(0xb9bdc2,.3,.8), GRY=M(0x4a5056,.4,.7), RIMD=M(0x1a1c1f,.4,.7), TIRE=M(0x121316,1);
-TIRE.side=THREE.DoubleSide;
-const GLS=new THREE.MeshStandardMaterial({color:0x1b252d,roughness:.12,metalness:.5,transparent:true,opacity:.55});
+TIRE.side=THREE.DoubleSide; const INTC=M(0x1a1b1e,.9);          // INTC: a plain dark 'interior' for traffic cars
+const GLS=new THREE.MeshStandardMaterial({color:0x1b252d,roughness:.12,metalness:.5,transparent:true,opacity:.4});
 const HEADL=basic(0xf4f8ff), TAILL=basic(0xe01818), AMB=basic(0x8a5400);
 // Wheel: rounded tyre (a "lathe" = profile spun around an axis) + dark disc + 5 silver turbine-style spokes. Built ONCE, shared by every car.
 function buildWheel(side){
@@ -481,8 +493,13 @@ function makeCar(color,player=false,signal=false){
   const amL=signal?basic(0x5a3a00):am, amR=signal?basic(0x5a3a00):am; if(signal) car.userData.sig={L:amL,R:amR};   // traffic cars get left/right indicators that can blink on their own
   const R=(mat,w,h,d,x,y,z,r=.1,seg=3)=>K.geo(new RoundedBoxGeometry(w,h,d,seg,r),mat,x,y,z);   // rounded panel
   // --- body: soft main volume, raised hood, black lower cladding + bumpers, black two-tone roof ---
-  R(paint,1.82,.66,4.4,0,.78,0,.16,4); R(paint,1.72,.1,1.2,0,1.1,-1.55,.05);
-  R(BLK,1.86,.2,3.3,0,.55,0,.07,2); R(BLK,1.8,.3,.46,0,.6,-2.0,.08,2); R(BLK,1.8,.3,.46,0,.6,2.0,.08,2);
+  // THE BODY IS NOT ONE SOLID BLOCK ANY MORE: a front block (engine bay + hood), a rear block, and two thin DOOR SHELLS. The space between the doors is
+  // OPEN, so the dashboard, wheel, seats and pillars can be seen through the windows and windscreen from outside.
+  R(paint,1.82,.66,1.22,0,.78,-1.59,.16,4); R(paint,1.82,.66,.42,0,.78,1.99,.16,3); R(paint,1.72,.1,1.2,0,1.1,-1.55,.05);
+  for(const sx of [-1,1]){ R(paint,.1,.66,2.76,sx*.86,.78,.4,.04,2); R(BLK,.1,.2,3.3,sx*.88,.55,0,.04,2); }               // door panels + black lower cladding strips
+  K.box(BLK,1.7,.04,2.8,0,.43,.4);                                                                                         // floor pan under the cabin
+  if(!player) K.box(INTC,1.6,.55,2.4,0,.83,.4);                                                                            // traffic cars get a dark filler instead of a full cabin
+  R(BLK,1.8,.3,.46,0,.6,-2.0,.08,2); R(BLK,1.8,.3,.46,0,.6,2.0,.08,2);
   R(BLK,1.66,.07,2.45,0,1.665,.6,.03,2);
   // --- glasshouse: raked windscreen, side glass leaning inward, steep tailgate glass, black pillars, silver roof rails ---
   K.box(GLS,1.5,.71,.03,0,1.36,-.74,.745); K.box(GLS,1.45,.52,.03,0,1.36,1.885,-.25);
@@ -908,7 +925,7 @@ function renderMirror(m){
   renderer.setRenderTarget(m.rt); renderer.render(scene,m.cam); renderer.setRenderTarget(prev);
   car.visible=true; rig.visible=true; renderer.xr.enabled=xr; renderer.shadowMap.autoUpdate=sh; }
 function updateMirrors(){
-  const fp=mode==='drive'&&cp.trim.visible;                                                              // live view only from inside the car; otherwise plain dark glass
+  const fp=mode==='drive'&&(!tp||inXR);                                                              // live view only from inside the car; otherwise plain dark glass
   for(const m of MIRRORS) m.glass.material=fp?m.live:MIRG;
   if(!fp) return;
   camera.getWorldPosition(mvv[0]); camera.getWorldDirection(mvv[1]);
@@ -968,7 +985,7 @@ renderer.setAnimationLoop(()=>{
   far.position.set(ref.x,0,ref.z); clouds.rotation.y+=dt*.002;
   { const ry=mode==='drive'?P.gy:W.gy; sun.position.set(ref.x,ry,ref.z).addScaledVector(sunDir,80); sun.target.position.set(ref.x,ry,ref.z); }   // the shadow box follows you uphill
   car.position.set(P.x,P.gy,P.z); car.rotation.set(GT.pitch,P.yaw,GT.roll); if(mode==='walk'||tp) for(const w of car.userData.wheels) w.rotation.x-=P.speed/.36*dt; cp.wheel.rotation.z=-P.stIn*3.1;
-  car.userData.shell.visible=mode==='walk'||tp; cp.trim.visible=!car.userData.shell.visible;   // inside trim only when the outside shell is hidden
+  car.userData.shell.visible=mode==='walk'||tp;   // first person hides the outside shell (you are inside it); the cabin is ALWAYS visible, so you also see it from outside
   av.visible=mode==='walk'&&tp; av.position.set(W.x,W.gy,W.z);
   // rig placement: desktop rig = eye height; VR rig stays at y=0 (the headset adds your real head height)
   const eyeH=inXR?0:(mode==='drive'?1.2:1.6), c=Math.cos(P.yaw), s=Math.sin(P.yaw), gy=mode==='drive'?P.gy:W.gy;
