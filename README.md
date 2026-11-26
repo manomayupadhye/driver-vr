@@ -4,7 +4,7 @@ Drive (or walk) along a hazy 8-lane Indian highway in a compact SUV with a fully
 
 Everything lives in **one self-contained `index.html`**: markup, CSS and JavaScript. There is no build step, no image files and no audio files. The graphics are built from Three.js geometry, the screens are drawn at run time on canvases, and the music is synthesised live with the Web Audio API.
 
-> **Live demo:** `https://YOURNAME.github.io/REPONAME/`
+> **Live demo:** `https://manomayupadhye.github.io/driver-vr/`
 > *(Open it in a desktop browser, or in the Meta Quest Browser and press **Enter VR**.)*
 
 <!-- Add a screenshot or GIF here:  ![screenshot](screenshot.png) -->
